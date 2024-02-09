@@ -27,7 +27,7 @@ yarn-error.log*
 /skillreactor
 
 # standard
-dist/
+
 tmp/
 out-tsc/
 bazel-out/
