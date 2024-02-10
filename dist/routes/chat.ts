@@ -29,9 +29,23 @@ const webSocketServer = (wss: Server) => {
       ws.send('Too many people online at this time');
       ws.close(4000, 'ChatSocket is full')
     }
+    foundUser.ws = []
+    //check if user is already connected
+    const userConnectedIndex = connectedUsers.findIndex(user => user.id === foundUser?.id)
+    console.log(userConnectedIndex)
+    if (userConnectedIndex < 0) {
+      foundUser.ws.push(ws as unknown as WebSocket)
+      connectedUsers.push(foundUser)
+    }
+    //else add ws session to connected user
+    else {
+      connectedUsers[userConnectedIndex].ws.push(ws as unknown as WebSocket)
+    }
+    console.log(connectedUsers)
 
-    foundUser.ws = ws
-    connectedUsers.push(foundUser)
+
+    console.log('connected users', connectedUsers.length)
+    console.log('wss size', wss.clients.size)
     ws.send(JSON.stringify("Welcome to Chat Socket!"));
 
     ws.on('message', (content: any) => {
@@ -42,7 +56,14 @@ const webSocketServer = (wss: Server) => {
 
         case 'direct': {
           const users: connectedUser[] = loadUsers()
-          sendDirectMessage(users, connectedUsers, parsedContent, ws)
+          const message: SocketMessage = parsedContent
+          const connectedRecipient = connectedUsers.find(person => person.username === message.recipient)
+          // wss.clients.forEach(function each(client) {
+          //   if (client === connectedRecipient.ws)
+          //     console.log('clientfound')
+          //   // client.send(JSON.stringify({type: `you should be getting a message ${client.id}`}))
+          // })
+          sendDirectMessage(users, connectedUsers, parsedContent, ws, connectedRecipient.ws)
         }
           break;
 
@@ -61,7 +82,15 @@ const webSocketServer = (wss: Server) => {
 
     ws.on('close', () => {
       //remove disconnected user from online user array
-      connectedUsers = connectedUsers.filter(user => user.ws != ws)
+
+      const connectedUserIndex = connectedUsers.findIndex(user => user.ws.includes(ws as unknown as WebSocket))
+      if (connectedUserIndex) {
+        let userWsArray = connectedUsers[connectedUserIndex].ws
+        //remove websocket from the placeholder variable and put it back in the right place
+        userWsArray.splice(userWsArray.indexOf(ws as unknown as WebSocket), 1)
+        connectedUsers[connectedUserIndex].ws = userWsArray
+        wss.clients.delete(ws)
+      }
     })
   })
 }

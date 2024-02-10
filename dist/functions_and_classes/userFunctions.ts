@@ -20,7 +20,7 @@ export function saveUsers(users: any) {
 }
 
 export function findUser(user: string) {
-    const users = loadUsers()
+    const users: connectedUser[] = loadUsers()
     const findUser = users.find((person: connectedUser) => person.username === user)
     return findUser
 }

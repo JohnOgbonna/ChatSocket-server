@@ -1,8 +1,10 @@
 export class connectedUser {
+  [x: string]: any;
   id: string
   username: string;
-  ws?: any;
+  ws?: WebSocket[];
   dateJoined: Date
+  foundUser: any;
   constructor(id: string, username: string, dateJoined: Date) {
     this.id = id;
     this.username = username;

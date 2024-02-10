@@ -15,7 +15,6 @@ const findChat = (userId, speakingWithId) => {
     try {
         const messages = parsedMessages();
         const chat = Object.keys(messages).find((message) => messages[message].participants.includes(userId) && messages[message].participants.includes(speakingWithId));
-        console.log(chat);
         return chat ? chat : null; //chat is the key of the chat
     }
     catch (error) {
@@ -27,7 +26,6 @@ const findChats = (username) => {
     try {
         const messages = parsedMessages();
         const chats = Object.keys(messages).filter((messageID) => messages[messageID].participants.includes(username));
-        console.log(chats);
         return chats ? chats : []; //chats is an array of IDs of convos that include the user 
     }
     catch (error) {
@@ -42,11 +40,11 @@ function loadPersonalMessages(userId, speakingWithId) {
     return chat ? messages[chat].messages : [];
 }
 exports.loadPersonalMessages = loadPersonalMessages;
-function saveChat(userId, speakingWithId, message, date) {
+function saveChat(id, userId, speakingWithId, message, date) {
     const chat = findChat(userId, speakingWithId);
     //find chat, add new message, if not, create chat
     let messages = parsedMessages();
-    const saveMessage = new classes_1.StoredMessage(date, (0, uuid_1.v4)(), speakingWithId, userId, [userId, speakingWithId], message);
+    const saveMessage = new classes_1.StoredMessage(date, id, speakingWithId, userId, [userId, speakingWithId], message);
     if (chat) {
         //push saved message into the right chat
         messages[chat].messages.push(saveMessage);
@@ -59,19 +57,36 @@ function saveChat(userId, speakingWithId, message, date) {
     fs.writeFileSync(messagesPath, JSON.stringify(messages, null, 2), 'utf-8');
 }
 exports.saveChat = saveChat;
-function sendDirectMessage(users, connectedUsers, parsedContent, ws) {
-    // const users: connectedUser[] = loadUsers()
+function sendDirectMessage(users, connectedUsers, parsedContent, ws, connectedRecipientWs) {
     //find if there is a user whos name is in the online users and in "database"
     const recipient = users.find(user => user.username === parsedContent.recipient);
+    //send real time message if user is online
     const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient);
     if (connectedRecipient) {
         // if connectedRecipient is online, send them the message
         const sendMessage = new classes_1.SocketMessage(parsedContent.id, 'incoming', parsedContent.username, connectedRecipient.username, parsedContent.message, parsedContent.datetime);
-        connectedRecipient.ws.send(JSON.stringify(sendMessage));
+        if (connectedRecipientWs && connectedRecipientWs.length > 0) {
+            try {
+                connectedRecipientWs.forEach(ws => ws.send(JSON.stringify(sendMessage)));
+                console.log('message sent');
+            }
+            catch (err) {
+                console.log('live message not sent');
+            }
+        }
     }
     if (recipient) {
         //save the chat to "database"
-        saveChat(parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
+        try {
+            saveChat(parsedContent.id, parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
+            const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, true);
+            ws.send(JSON.stringify(confirmationMessage));
+        }
+        catch (err) {
+            console.log('error saving message');
+            const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, false);
+            ws.send(JSON.stringify(confirmationMessage));
+        }
     }
     else {
         ws.send(`No recipient named ${parsedContent.recipient} found`);
@@ -86,13 +101,10 @@ function sendMessageList(request, ws) {
     let displayConvoArray = [];
     if (chats) {
         chats.forEach(chatID => {
-            console.log(chatID);
             //  lastMessage = messages[chatID].messages[messages[chatID].messages.length -1].message
             // speaking with = messages[chatID].participants find participant !== username
             const lastMessage = messages[chatID].messages[messages[chatID].messages.length - 1].message;
-            console.log('lastMessage:', lastMessage);
             const speakingWith = messages[chatID].participants.find((participant) => participant !== request.username);
-            console.log('speakingWith:', speakingWith);
             // push new display convo into array
             displayConvoArray.push(new classes_1.DisplayConvo(speakingWith, lastMessage, chatID));
         });
@@ -105,7 +117,6 @@ function sendConversationMessages(request, ws) {
     //find conversation using the id 
     const messages = parsedMessages();
     //find conversation messages, simple to do based on ID
-    console.log(request);
     if (messages[request.convoId]) {
         const conversationMessages = messages[request.convoId].messages;
         //make a new send chat history object

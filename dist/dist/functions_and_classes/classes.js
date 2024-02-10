@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
+exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
 class connectedUser {
     constructor(id, username, dateJoined) {
         this.id = id;
@@ -81,4 +81,13 @@ class SendChatHistory {
     }
 }
 exports.SendChatHistory = SendChatHistory;
+class confirmMessage {
+    constructor(id, username, success) {
+        this.type = 'confirmMessage',
+            this.id = id,
+            this.username = username,
+            this.success = success;
+    }
+}
+exports.confirmMessage = confirmMessage;
 //# sourceMappingURL=classes.js.map

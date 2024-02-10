@@ -19,6 +19,7 @@
     "http": "^0.0.1-security",
     "uuid": "^9.0.1",
     "was": "^1.0.31",
+    "websocket": "^1.0.34",
     "ws": "^8.16.0"
   },
   "devDependencies": {

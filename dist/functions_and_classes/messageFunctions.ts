@@ -16,7 +16,6 @@ const findChat = (userId: string, speakingWithId: string) => {
         const messages = parsedMessages()
 
         const chat = Object.keys(messages).find((message) => messages[message].participants.includes(userId) && messages[message].participants.includes(speakingWithId))
-        console.log(chat)
 
         return chat ? chat : null //chat is the key of the chat
     } catch (error) {
@@ -29,7 +28,7 @@ const findChats = (username: string) => {
         const messages: { [key: string]: StoredChat } = parsedMessages()
 
         const chats = Object.keys(messages).filter((messageID) => messages[messageID].participants.includes(username))
-        console.log(chats)
+
 
         return chats ? chats : [] //chats is an array of IDs of convos that include the user 
     } catch (error) {
@@ -45,7 +44,7 @@ export function loadPersonalMessages(userId: string, speakingWithId: string) {
     return chat ? messages[chat].messages : []
 }
 
-export function saveChat(id :string, userId: string, speakingWithId: string, message: string, date: Date) {
+export function saveChat(id: string, userId: string, speakingWithId: string, message: string, date: Date) {
     const chat = findChat(userId, speakingWithId)
     //find chat, add new message, if not, create chat
     let messages = parsedMessages()
@@ -71,13 +70,13 @@ export function saveChat(id :string, userId: string, speakingWithId: string, mes
     fs.writeFileSync(messagesPath, JSON.stringify(messages, null, 2), 'utf-8');
 }
 
-export function sendDirectMessage(users: connectedUser[], connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any) {
+export function sendDirectMessage(users: connectedUser[], connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any, connectedRecipientWs: WebSocket[]) {
 
-    // const users: connectedUser[] = loadUsers()
     //find if there is a user whos name is in the online users and in "database"
     const recipient = users.find(user => user.username === parsedContent.recipient)
     //send real time message if user is online
     const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient)
+
     if (connectedRecipient) {
         // if connectedRecipient is online, send them the message
         const sendMessage = new SocketMessage(
@@ -88,9 +87,18 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
             parsedContent.message,
             parsedContent.datetime
         )
-        connectedRecipient.ws.send(JSON.stringify(sendMessage))
 
+        if (connectedRecipientWs && connectedRecipientWs.length > 0) {
+            try {
+                connectedRecipientWs.forEach(ws=>ws.send(JSON.stringify(sendMessage)))
+                console.log('message sent')
+            }
+            catch (err) {
+                console.log('live message not sent')
+            }
+        }
     }
+
     if (recipient) {
         //save the chat to "database"
         try {
@@ -100,7 +108,7 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
         }
         catch (err) {
             console.log('error saving message')
-            const confirmationMessage = new confirmMessage(parsedContent.id, parsedContent.username, true)
+            const confirmationMessage = new confirmMessage(parsedContent.id, parsedContent.username, false)
             ws.send(JSON.stringify(confirmationMessage))
         }
     }
@@ -118,14 +126,10 @@ export function sendMessageList(request: ConvoListReq, ws: any) {
 
     if (chats) {
         chats.forEach(chatID => {
-            console.log(chatID)
-
             //  lastMessage = messages[chatID].messages[messages[chatID].messages.length -1].message
             // speaking with = messages[chatID].participants find participant !== username
             const lastMessage = messages[chatID].messages[messages[chatID].messages.length - 1].message
-            console.log('lastMessage:', lastMessage)
             const speakingWith = messages[chatID].participants.find((participant: string) => participant !== request.username)
-            console.log('speakingWith:', speakingWith)
             // push new display convo into array
             displayConvoArray.push(new DisplayConvo(speakingWith, lastMessage, chatID))
         }
@@ -139,7 +143,6 @@ export function sendConversationMessages(request: messageHistoryReq, ws: any) {
     //find conversation using the id 
     const messages: { [key: string]: StoredChat } = parsedMessages()
     //find conversation messages, simple to do based on ID
-    console.log(request)
     if (messages[request.convoId]) {
         const conversationMessages = messages[request.convoId].messages
         //make a new send chat history object
