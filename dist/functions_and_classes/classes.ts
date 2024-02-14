@@ -122,10 +122,18 @@ export class confirmMessage {
   id: string | undefined
   username: string | undefined
   success: boolean
+  messageId: string
   constructor(id: string | undefined, username: string | undefined, success: boolean){
     this.type='confirmMessage',
     this.id=id,
     this.username=username,
     this.success = success
   }
+}
+
+export class deleteRequest {
+  type: 'deleteRequest';
+  username: string;
+  messageId: string;
+  convoId: string;
 }

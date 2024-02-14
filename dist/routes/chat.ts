@@ -7,7 +7,7 @@ const PORT: number = 3000
 import { getCurrentDateTime } from '../functions_and_classes/tools'
 import { connectedUser, Message, SocketMessage, ConvoListReq, SendChatHistory } from '../functions_and_classes/classes'
 import { loadUsers, saveUsers, findUser } from '../functions_and_classes/userFunctions'
-import { saveChat, sendConversationMessages, sendDirectMessage, sendMessageList } from '../functions_and_classes/messageFunctions'
+import { saveChat, sendConversationMessages, sendDirectMessage, sendMessageList, deleteMessage } from '../functions_and_classes/messageFunctions'
 
 const webSocketServer = (wss: Server) => {
 
@@ -32,16 +32,17 @@ const webSocketServer = (wss: Server) => {
     foundUser.ws = []
     //check if user is already connected
     const userConnectedIndex = connectedUsers.findIndex(user => user.id === foundUser?.id)
-    console.log(userConnectedIndex)
+
     if (userConnectedIndex < 0) {
+      //add found user to connected users if not exists
       foundUser.ws.push(ws as unknown as WebSocket)
       connectedUsers.push(foundUser)
     }
     //else add ws session to connected user
+
     else {
       connectedUsers[userConnectedIndex].ws.push(ws as unknown as WebSocket)
     }
-    console.log(connectedUsers)
 
 
     console.log('connected users', connectedUsers.length)
@@ -58,11 +59,6 @@ const webSocketServer = (wss: Server) => {
           const users: connectedUser[] = loadUsers()
           const message: SocketMessage = parsedContent
           const connectedRecipient = connectedUsers.find(person => person.username === message.recipient)
-          // wss.clients.forEach(function each(client) {
-          //   if (client === connectedRecipient.ws)
-          //     console.log('clientfound')
-          //   // client.send(JSON.stringify({type: `you should be getting a message ${client.id}`}))
-          // })
           sendDirectMessage(users, connectedUsers, parsedContent, ws, connectedRecipient.ws)
         }
           break;
@@ -77,6 +73,10 @@ const webSocketServer = (wss: Server) => {
         }
           break;
 
+        case 'deleteRequest': {
+          deleteMessage(parsedContent, ws as unknown as WebSocket, connectedUsers)
+        }
+
       }
     })
 
@@ -84,11 +84,16 @@ const webSocketServer = (wss: Server) => {
       //remove disconnected user from online user array
 
       const connectedUserIndex = connectedUsers.findIndex(user => user.ws.includes(ws as unknown as WebSocket))
-      if (connectedUserIndex) {
+      if (connectedUserIndex > -1) {
         let userWsArray = connectedUsers[connectedUserIndex].ws
         //remove websocket from the placeholder variable and put it back in the right place
         userWsArray.splice(userWsArray.indexOf(ws as unknown as WebSocket), 1)
-        connectedUsers[connectedUserIndex].ws = userWsArray
+        if (userWsArray.length > 0) {
+          connectedUsers[connectedUserIndex].ws = userWsArray
+        }
+        else {
+          connectedUsers.splice(connectedUserIndex, 1)
+        }
         wss.clients.delete(ws)
       }
     })

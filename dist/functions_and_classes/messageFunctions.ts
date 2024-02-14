@@ -1,6 +1,7 @@
 const fs = require('fs')
 const path = require('path');
-import { StoredMessage, StoredChat, ConvoListReq, StoredMessages, DisplayConvo, connectedUser, SocketMessage, messageHistoryReq, SendChatHistory, confirmMessage } from '../functions_and_classes/classes'
+import { userInfo } from 'os';
+import { StoredMessage, StoredChat, ConvoListReq, StoredMessages, DisplayConvo, connectedUser, SocketMessage, messageHistoryReq, SendChatHistory, confirmMessage, deleteRequest } from '../functions_and_classes/classes'
 import { v4 as uuidv4 } from 'uuid';
 
 const messagesPath = path.join(__dirname, '../data/messages.json');
@@ -90,7 +91,7 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
 
         if (connectedRecipientWs && connectedRecipientWs.length > 0) {
             try {
-                connectedRecipientWs.forEach(ws=>ws.send(JSON.stringify(sendMessage)))
+                connectedRecipientWs.forEach(ws => ws.send(JSON.stringify(sendMessage)))
                 console.log('message sent')
             }
             catch (err) {
@@ -144,10 +145,54 @@ export function sendConversationMessages(request: messageHistoryReq, ws: any) {
     const messages: { [key: string]: StoredChat } = parsedMessages()
     //find conversation messages, simple to do based on ID
     if (messages[request.convoId]) {
-        const conversationMessages = messages[request.convoId].messages
+
+        //filter messages based on enabled
+        const conversationMessages = messages[request.convoId].messages.filter(message => message.enabled.includes(request.username))
         //make a new send chat history object
         const chatHistory = new SendChatHistory(conversationMessages, request.convoId)
         //send chat history
         ws.send(JSON.stringify(chatHistory))
+    }
+}
+
+export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUsers: connectedUser[]) {
+    const messages: { [key: string]: StoredChat } = parsedMessages()
+
+    const chat: StoredChat = messages[request.convoId]
+
+    //find message where the ID matches convo ID and the user is included in the participants array
+    const messageIndex = chat.messages.findIndex(message => message.id === request.messageId && message.participants.includes(request.username))
+    if (messageIndex < 0) {
+        ws.send(JSON.stringify({ type: 'messageDeleteFail', messageId: request.messageId }))
+        return
+    }
+    const message = chat.messages[messageIndex]
+    //modify participants array based on the user request
+
+    if (message.from !== request.username) {
+        //remove user from user array
+        message.enabled.splice(message.participants.indexOf(request.username))
+        chat.messages[messageIndex] = message
+        // //replace chat with modified chat
+        messages[request.convoId] = chat
+    }
+    else {
+        chat.messages = chat.messages.filter(Message => Message.id !== request.messageId)
+        //replace chat with modified chat
+        messages[request.convoId] = chat
+    }
+    //save message to 'Database'
+    fs.writeFileSync(messagesPath, JSON.stringify(messages, null, 2), 'utf-8');
+
+    //send delete confirmation to update in real time
+    const connectedSender = connectedUsers.find(user => user.username === message.from)
+    const connectedRecipient = connectedUsers.find(user => user.username === message.to)
+    const deleteConfirmation = ({ type: 'deleteConfirmation', messageId: request.messageId })
+
+    connectedSender.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+    //if sender of the message delete request is online and also the original sender of the message
+    if (connectedSender.username === request.username) {
+        //SEND to both recipient and sender, because message will be deleted for both if sender requests delete
+        connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
     }
 }

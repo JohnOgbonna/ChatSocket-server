@@ -23,17 +23,18 @@ const webSocketServer = (wss) => {
             ws.send('Too many people online at this time');
             ws.close(4000, 'ChatSocket is full');
         }
+        foundUser.ws = [];
         //check if user is already connected
         const userConnectedIndex = connectedUsers.findIndex(user => user.id === (foundUser === null || foundUser === void 0 ? void 0 : foundUser.id));
-        if (!userConnectedIndex) {
-            foundUser.ws = [ws];
+        if (userConnectedIndex < 0) {
+            //add found user to connected users if not exists
+            foundUser.ws.push(ws);
             connectedUsers.push(foundUser);
         }
         //else add ws session to connected user
         else {
             connectedUsers[userConnectedIndex].ws.push(ws);
         }
-        connectedUsers.push(foundUser);
         console.log('connected users', connectedUsers.length);
         console.log('wss size', wss.clients.size);
         ws.send(JSON.stringify("Welcome to Chat Socket!"));
@@ -46,11 +47,6 @@ const webSocketServer = (wss) => {
                         const users = (0, userFunctions_1.loadUsers)();
                         const message = parsedContent;
                         const connectedRecipient = connectedUsers.find(person => person.username === message.recipient);
-                        wss.clients.forEach(function each(client) {
-                            if (client === connectedRecipient.ws)
-                                console.log('clientfound');
-                            // client.send(JSON.stringify({type: `you should be getting a message ${client.id}`}))
-                        });
                         (0, messageFunctions_1.sendDirectMessage)(users, connectedUsers, parsedContent, ws, connectedRecipient.ws);
                     }
                     break;
@@ -68,11 +64,19 @@ const webSocketServer = (wss) => {
         });
         ws.on('close', () => {
             //remove disconnected user from online user array
-            const connectedUserName = connectedUsers.find(user => user.ws === ws);
-            if (connectedUserName) {
-                connectedUsers = connectedUsers.filter(user => user.username !== connectedUserName.username);
+            const connectedUserIndex = connectedUsers.findIndex(user => user.ws.includes(ws));
+            if (connectedUserIndex > -1) {
+                let userWsArray = connectedUsers[connectedUserIndex].ws;
+                //remove websocket from the placeholder variable and put it back in the right place
+                userWsArray.splice(userWsArray.indexOf(ws), 1);
+                if (userWsArray.length > 0) {
+                    connectedUsers[connectedUserIndex].ws = userWsArray;
+                }
+                else {
+                    connectedUsers.splice(connectedUserIndex, 1);
+                }
+                wss.clients.delete(ws);
             }
-            wss.clients.delete(ws);
         });
     });
 };
