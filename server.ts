@@ -7,11 +7,10 @@ const PORT: number = 3000
 import webSocketServer from './dist/routes/chat'
 import WebSocket from 'ws'
 import http from 'http';
-
+require('dotenv').config();
 
 const cors = require('cors');
-
-
+console.log(process.env.DB_ACCESS_KEY)
 const app = express();
 app.use(cors())
 app.use(bodyParser.json())

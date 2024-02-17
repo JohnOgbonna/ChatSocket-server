@@ -6,6 +6,7 @@ const router = express.Router();
 const PORT = 3000;
 const userFunctions_1 = require("../functions_and_classes/userFunctions");
 const messageFunctions_1 = require("../functions_and_classes/messageFunctions");
+const messageFunctions_2 = require("../functions_and_classes/messageFunctions");
 const webSocketServer = (wss) => {
     let connectedUsers = [];
     wss.on('connection', (ws, req) => {
@@ -47,7 +48,8 @@ const webSocketServer = (wss) => {
                         const users = (0, userFunctions_1.loadUsers)();
                         const message = parsedContent;
                         const connectedRecipient = connectedUsers.find(person => person.username === message.recipient);
-                        (0, messageFunctions_1.sendDirectMessage)(users, connectedUsers, parsedContent, ws, connectedRecipient.ws);
+                        const recipientWs = connectedRecipient ? connectedRecipient.ws : null;
+                        (0, messageFunctions_2.sendDirectMessage)(users, connectedUsers, parsedContent, ws, recipientWs);
                     }
                     break;
                 case 'convoListReq':
@@ -60,6 +62,9 @@ const webSocketServer = (wss) => {
                         (0, messageFunctions_1.sendConversationMessages)(parsedContent, ws);
                     }
                     break;
+                case 'deleteRequest': {
+                    (0, messageFunctions_1.deleteMessage)(parsedContent, ws, connectedUsers);
+                }
             }
         });
         ws.on('close', () => {

@@ -3,6 +3,8 @@ const path = require('path');
 import { userInfo } from 'os';
 import { StoredMessage, StoredChat, ConvoListReq, StoredMessages, DisplayConvo, connectedUser, SocketMessage, messageHistoryReq, SendChatHistory, confirmMessage, deleteRequest } from '../functions_and_classes/classes'
 import { v4 as uuidv4 } from 'uuid';
+import { DynamoDB } from 'aws-sdk';
+
 
 const messagesPath = path.join(__dirname, '../data/messages.json');
 
@@ -63,7 +65,6 @@ export function saveChat(id: string, userId: string, speakingWithId: string, mes
         messages[chat].messages.push(saveMessage)
     }
     else {
-
         const convoId = uuidv4()
         //make new id for new message
         messages[convoId] = new StoredChat(uuidv4(), [userId, speakingWithId], [saveMessage])
@@ -157,11 +158,11 @@ export function sendConversationMessages(request: messageHistoryReq, ws: any) {
 
 export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUsers: connectedUser[]) {
     const messages: { [key: string]: StoredChat } = parsedMessages()
-
+    console.log(request)
     const chat: StoredChat = messages[request.convoId]
 
     //find message where the ID matches convo ID and the user is included in the participants array
-    const messageIndex = chat.messages.findIndex(message => message.id === request.messageId && message.participants.includes(request.username))
+    const messageIndex = chat.messages.findIndex(message => message.id === request.messageId)
     if (messageIndex < 0) {
         ws.send(JSON.stringify({ type: 'messageDeleteFail', messageId: request.messageId }))
         return
@@ -196,3 +197,4 @@ export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUs
         connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
     }
 }
+

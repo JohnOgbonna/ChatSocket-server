@@ -28,7 +28,6 @@ export class Message {
 export class StoredMessage {
   datetime: Date;
   id: string;
-  participants: [string, string];
   to: string;
   from: string;
   enabled: [string, string];
@@ -65,7 +64,7 @@ export class SocketMessage {
   recipient: string | string[];
   message: string;
   datetime: Date;
-  constructor(id: string, type: string, username: string, recipient: string | string, message: string, datetime: Date) {
+  constructor(id: string, type: string, username: string, recipient: string | string[], message: string, datetime: Date) {
     this.datetime = datetime,
       this.id = id,
       this.type = type,

@@ -7,7 +7,8 @@ const PORT: number = 3000
 import { getCurrentDateTime } from '../functions_and_classes/tools'
 import { connectedUser, Message, SocketMessage, ConvoListReq, SendChatHistory } from '../functions_and_classes/classes'
 import { loadUsers, saveUsers, findUser } from '../functions_and_classes/userFunctions'
-import { saveChat, sendConversationMessages, sendDirectMessage, sendMessageList, deleteMessage } from '../functions_and_classes/messageFunctions'
+import { saveChat, deleteMessage } from '../functions_and_classes/messageFunctions'
+import { sendDirectMessage, sendMessageList, sendConversationMessages } from '../functions_and_classes/messageFunctionsDB';
 
 const webSocketServer = (wss: Server) => {
 
@@ -59,12 +60,13 @@ const webSocketServer = (wss: Server) => {
           const users: connectedUser[] = loadUsers()
           const message: SocketMessage = parsedContent
           const connectedRecipient = connectedUsers.find(person => person.username === message.recipient)
-          sendDirectMessage(users, connectedUsers, parsedContent, ws, connectedRecipient.ws)
+          const recipientWs = connectedRecipient ? connectedRecipient.ws : null
+          sendDirectMessage(users, connectedUsers, parsedContent, ws, recipientWs)
         }
           break;
 
         case 'convoListReq': {
-          sendMessageList(parsedContent, ws)
+          sendMessageList(parsedContent, ws as unknown as WebSocket)
         }
           break;
 
