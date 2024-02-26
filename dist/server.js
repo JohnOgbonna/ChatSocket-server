@@ -14,7 +14,6 @@ const ws_1 = __importDefault(require("ws"));
 const http_1 = __importDefault(require("http"));
 require('dotenv').config();
 const cors = require('cors');
-console.log(process.env.DB_ACCESS_KEY);
 const app = express();
 app.use(cors());
 app.use(bodyParser.json());

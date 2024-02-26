@@ -1,9 +1,8 @@
 const fs = require('fs')
 const path = require('path');
-import { userInfo } from 'os';
 import { StoredMessage, StoredChat, ConvoListReq, StoredMessages, DisplayConvo, connectedUser, SocketMessage, messageHistoryReq, SendChatHistory, confirmMessage, deleteRequest } from '../functions_and_classes/classes'
 import { v4 as uuidv4 } from 'uuid';
-import { DynamoDB } from 'aws-sdk';
+
 
 
 const messagesPath = path.join(__dirname, '../data/messages.json');
@@ -17,7 +16,6 @@ const parsedMessages = () => {
 const findChat = (userId: string, speakingWithId: string) => {
     try {
         const messages = parsedMessages()
-
         const chat = Object.keys(messages).find((message) => messages[message].participants.includes(userId) && messages[message].participants.includes(speakingWithId))
 
         return chat ? chat : null //chat is the key of the chat
@@ -158,7 +156,6 @@ export function sendConversationMessages(request: messageHistoryReq, ws: any) {
 
 export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUsers: connectedUser[]) {
     const messages: { [key: string]: StoredChat } = parsedMessages()
-    console.log(request)
     const chat: StoredChat = messages[request.convoId]
 
     //find message where the ID matches convo ID and the user is included in the participants array
@@ -172,7 +169,7 @@ export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUs
 
     if (message.from !== request.username) {
         //remove user from user array
-        message.enabled.splice(message.participants.indexOf(request.username))
+        // message.enabled.splice(message.participants.indexOf(request.username))
         chat.messages[messageIndex] = message
         // //replace chat with modified chat
         messages[request.convoId] = chat

@@ -129,7 +129,6 @@ function sendConversationMessages(request, ws) {
 exports.sendConversationMessages = sendConversationMessages;
 function deleteMessage(request, ws, connectedUsers) {
     const messages = parsedMessages();
-    console.log(request);
     const chat = messages[request.convoId];
     //find message where the ID matches convo ID and the user is included in the participants array
     const messageIndex = chat.messages.findIndex(message => message.id === request.messageId);
@@ -141,7 +140,7 @@ function deleteMessage(request, ws, connectedUsers) {
     //modify participants array based on the user request
     if (message.from !== request.username) {
         //remove user from user array
-        message.enabled.splice(message.participants.indexOf(request.username));
+        // message.enabled.splice(message.participants.indexOf(request.username))
         chat.messages[messageIndex] = message;
         // //replace chat with modified chat
         messages[request.convoId] = chat;

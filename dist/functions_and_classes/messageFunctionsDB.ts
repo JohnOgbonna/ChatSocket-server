@@ -1,7 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDB } from 'aws-sdk';
-import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, messageHistoryReq } from './classes';
-import { dynamodb } from '../data/dynamoDBConnection'
+import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, messageHistoryReq, onlineUserListRequest, onlineUserListResponse } from './classes';
+import { dynamodb } from '../database/dynamoDBConnection'
+import { findUser } from './userFunctionsDB';
 
 
 export async function findChat(userId: string, speakingWithId: string): Promise<string | null> {
@@ -134,8 +135,9 @@ export async function loadPersonalMessages(userId: string, speakingWithId: strin
     }
 }
 
-export function sendDirectMessage(users: connectedUser[], connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any, connectedRecipientWs: WebSocket[]) {
-    const recipient = users.find(user => user.username === parsedContent.recipient);
+export async function sendDirectMessage(connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any, connectedRecipientWs: WebSocket[]) {
+
+    const recipient = await findUser(parsedContent.recipient as string)
     const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient);
 
     if (connectedRecipient) {
@@ -154,7 +156,7 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
                 connectedRecipientWs.forEach(ws => ws.send(JSON.stringify(sendMessage)));
                 console.log('message sent');
             } catch (err) {
-                console.log('live message not sent');
+                console.log('Recipient not connected');
             }
         }
     }
@@ -162,7 +164,7 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
     if (recipient) {
         // Save the chat to the database
         try {
-            saveChat(parsedContent.id, parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
+            await saveChat(parsedContent.id, parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
 
             // Send confirmation message
             const confirmationMessage = new confirmMessage(parsedContent.id, parsedContent.username, true);
@@ -175,6 +177,8 @@ export function sendDirectMessage(users: connectedUser[], connectedUsers: connec
         }
     } else {
         ws.send(`No recipient named ${parsedContent.recipient} found`);
+        console.log(`Recipient ${parsedContent.recipient} not found.`);
+        
     }
 }
 
@@ -242,6 +246,19 @@ export async function sendConversationMessages(request: messageHistoryReq, ws: a
             console.error('Error:', error);
             throw error;
         }
+    }
+}
+
+export async function sendOnlineUserList(ws: WebSocket, request: onlineUserListRequest, connectedUsers: connectedUser[]) {
+    const { username } = request
+
+    //user list of online users who are not the user who sent the request
+    const onlineUserList = connectedUsers.filter(u => u.username !== username)
+
+    //sendOnlineUserList response
+    const sendOnlineUserList = new onlineUserListResponse(onlineUserList)
+    if (ws && ws.readyState) {
+        ws.send(JSON.stringify(sendOnlineUserList))
     }
 }
 

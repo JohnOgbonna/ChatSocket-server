@@ -14,31 +14,31 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.fetchDataFromDynamoDB = exports.dynamodb = void 0;
 const aws_sdk_1 = __importDefault(require("aws-sdk"));
-const dotenv_1 = __importDefault(require("dotenv"));
-// Load environment variables from .env file
-dotenv_1.default.config();
+require('aws-sdk/lib/maintenance_mode_message').suppress = true;
+require('dotenv').config();
+// Provide your AWS credentials
+const credentials = {
+    accessKeyId: process.env.DB_ACCESS_KEY,
+    secretAccessKey: process.env.DB_SECRET_ACCESS_KEY
+};
 // Set the AWS region
-aws_sdk_1.default.config.update({ region: 'us-east-2' });
-// Create DynamoDB instance
-exports.dynamodb = new aws_sdk_1.default.DynamoDB.DocumentClient();
+const region = 'us-east-2';
+// Create DynamoDB instance with provided credentials and region
+exports.dynamodb = new aws_sdk_1.default.DynamoDB.DocumentClient({ credentials, region });
 // Example function to fetch data from DynamoDB table
 function fetchDataFromDynamoDB() {
     return __awaiter(this, void 0, void 0, function* () {
         const params = {
-            TableName: 'Chat_Socket-Messages' // Make sure this matches your actual table name
+            TableName: 'Chat_Socket-Messages'
         };
         try {
             const data = yield exports.dynamodb.scan(params).promise();
             console.log('Data fetched from DynamoDB:', data);
-            return data;
         }
         catch (error) {
             console.error('Error fetching data from DynamoDB:', error);
-            throw error; // Rethrow the error for handling by the caller
         }
     });
 }
 exports.fetchDataFromDynamoDB = fetchDataFromDynamoDB;
-// Call the function to fetch data from DynamoDB
-fetchDataFromDynamoDB();
 //# sourceMappingURL=dynamoDBConnection.js.map

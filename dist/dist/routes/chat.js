@@ -6,7 +6,7 @@ const router = express.Router();
 const PORT = 3000;
 const userFunctions_1 = require("../functions_and_classes/userFunctions");
 const messageFunctions_1 = require("../functions_and_classes/messageFunctions");
-const messageFunctions_2 = require("../functions_and_classes/messageFunctions");
+const messageFunctionsDB_1 = require("../functions_and_classes/messageFunctionsDB");
 const webSocketServer = (wss) => {
     let connectedUsers = [];
     wss.on('connection', (ws, req) => {
@@ -49,21 +49,30 @@ const webSocketServer = (wss) => {
                         const message = parsedContent;
                         const connectedRecipient = connectedUsers.find(person => person.username === message.recipient);
                         const recipientWs = connectedRecipient ? connectedRecipient.ws : null;
-                        (0, messageFunctions_2.sendDirectMessage)(users, connectedUsers, parsedContent, ws, recipientWs);
+                        (0, messageFunctionsDB_1.sendDirectMessage)(users, connectedUsers, parsedContent, ws, recipientWs);
                     }
                     break;
                 case 'convoListReq':
                     {
-                        (0, messageFunctions_1.sendMessageList)(parsedContent, ws);
+                        (0, messageFunctionsDB_1.sendMessageList)(parsedContent, ws);
                     }
                     break;
                 case 'messageHistoryReq':
                     {
-                        (0, messageFunctions_1.sendConversationMessages)(parsedContent, ws);
+                        (0, messageFunctionsDB_1.sendConversationMessages)(parsedContent, ws);
                     }
                     break;
-                case 'deleteRequest': {
-                    (0, messageFunctions_1.deleteMessage)(parsedContent, ws, connectedUsers);
+                case 'deleteRequest':
+                    {
+                        (0, messageFunctions_1.deleteMessage)(parsedContent, ws, connectedUsers);
+                    }
+                    break;
+                case 'onlineUserListRequest':
+                    {
+                        (0, messageFunctionsDB_1.sendOnlineUserList)(ws, parsedContent, connectedUsers);
+                    }
+                    break;
+                case 'searchUserRequest': {
                 }
             }
         });

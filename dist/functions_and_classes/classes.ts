@@ -1,16 +1,20 @@
 export class connectedUser {
-  [x: string]: any;
   id: string
   username: string;
   ws?: WebSocket[];
-  dateJoined: Date
-  foundUser: any;
-  constructor(id: string, username: string, dateJoined: Date) {
+  dateJoined: Date | string;
+  session: any
+  password?: string
+  constructor(id: string, username: string, dateJoined: Date | string, password: string) {
     this.id = id;
     this.username = username;
-    this.dateJoined = this.dateJoined
+    this.dateJoined = dateJoined
+    this.password = password
   }
 }
+
+export type PromiseConnectedUser = Promise<connectedUser | undefined>;
+
 export class Message {
   type: string;
   data: any;
@@ -112,7 +116,7 @@ export class SendChatHistory {
   constructor(data: StoredMessage[], convoId: string) {
     this.type = 'chatHistory',
       this.data = data
-      this.convoId = convoId
+    this.convoId = convoId
   }
 }
 
@@ -122,11 +126,11 @@ export class confirmMessage {
   username: string | undefined
   success: boolean
   messageId: string
-  constructor(id: string | undefined, username: string | undefined, success: boolean){
-    this.type='confirmMessage',
-    this.id=id,
-    this.username=username,
-    this.success = success
+  constructor(id: string | undefined, username: string | undefined, success: boolean) {
+    this.type = 'confirmMessage',
+      this.id = id,
+      this.username = username,
+      this.success = success
   }
 }
 
@@ -135,4 +139,24 @@ export class deleteRequest {
   username: string;
   messageId: string;
   convoId: string;
+}
+
+export class onlineUserListRequest {
+  ws: WebSocket;
+  username: string;
+}
+
+export class onlineUserListResponse {
+  type: 'onlineUserList'
+  data: connectedUser[]
+  constructor(data: connectedUser[]) {
+    this.type = 'onlineUserList'
+    this.data = data
+  }
+}
+
+export class SearchUserRequest {
+  type: 'searchUserRequest';
+  username: string;
+  searchkey: string;
 }

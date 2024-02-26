@@ -4,31 +4,34 @@ const router = express.Router();
 import { v4 as uuidv4 } from 'uuid';
 import { Server } from 'ws';
 const PORT: number = 3000
-import { getCurrentDateTime } from '../functions_and_classes/tools'
 import { connectedUser, Message, SocketMessage, ConvoListReq, SendChatHistory } from '../functions_and_classes/classes'
-import { loadUsers, saveUsers, findUser } from '../functions_and_classes/userFunctions'
+import { loadUsers, saveUsers} from '../functions_and_classes/userFunctions'
 import { saveChat, deleteMessage } from '../functions_and_classes/messageFunctions'
-import { sendDirectMessage, sendMessageList, sendConversationMessages } from '../functions_and_classes/messageFunctionsDB';
+import { findUser } from '../functions_and_classes/userFunctions';
+import { sendDirectMessage, sendMessageList, sendConversationMessages, sendOnlineUserList } from '../functions_and_classes/messageFunctionsDB';
+import { ConfigurationServicePlaceholders } from 'aws-sdk/lib/config_service_placeholders';
+
 
 const webSocketServer = (wss: Server) => {
 
   let connectedUsers: connectedUser[] = []
 
-  wss.on('connection', (ws, req) => {
+  wss.on('connection', async (ws, req) => {
     const username: string = url.parse(req.url, true).query.username
     //check if user exists:
     const foundUser: connectedUser = findUser(username)
 
     //if user doesnt exist, disconnect them right away
     if (!foundUser) {
-      ws.send('You must be registered to use this WebSocket.');
+      ws.send(JSON.stringify({ type: 'notRegistered', message:'You must be registered to use this app.'}));
       ws.close(4000, 'User not found! Closing....')
       return
     }
     //limit connected users to 25
     if (connectedUsers.length > 24) {
-      ws.send('Too many people online at this time');
+      ws.send(JSON.stringify({ type: 'chatFull', message:'Chat Socket full, try again later.'}));
       ws.close(4000, 'ChatSocket is full')
+      return
     }
     foundUser.ws = []
     //check if user is already connected
@@ -44,24 +47,22 @@ const webSocketServer = (wss: Server) => {
     else {
       connectedUsers[userConnectedIndex].ws.push(ws as unknown as WebSocket)
     }
-
-
+    
     console.log('connected users', connectedUsers.length)
     console.log('wss size', wss.clients.size)
     ws.send(JSON.stringify("Welcome to Chat Socket!"));
 
-    ws.on('message', (content: any) => {
+    ws.on('message', async (content: any) => {
       const parsedContent = JSON.parse(content)
       const type = parsedContent.type
 
       switch (type) {
 
         case 'direct': {
-          const users: connectedUser[] = loadUsers()
           const message: SocketMessage = parsedContent
-          const connectedRecipient = connectedUsers.find(person => person.username === message.recipient)
+          const connectedRecipient = await findUser(message.recipient as string)
           const recipientWs = connectedRecipient ? connectedRecipient.ws : null
-          sendDirectMessage(users, connectedUsers, parsedContent, ws, recipientWs)
+          sendDirectMessage(connectedUsers, parsedContent, ws, recipientWs)
         }
           break;
 
@@ -78,7 +79,16 @@ const webSocketServer = (wss: Server) => {
         case 'deleteRequest': {
           deleteMessage(parsedContent, ws as unknown as WebSocket, connectedUsers)
         }
+          break
 
+        case 'onlineUserListRequest': {
+          sendOnlineUserList(ws as unknown as WebSocket, parsedContent, connectedUsers,)
+        }
+          break
+
+        case 'searchUserRequest': {
+
+        }
       }
     })
 

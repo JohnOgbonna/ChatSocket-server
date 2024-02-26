@@ -1,11 +1,12 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
+exports.SearchUserRequest = exports.onlineUserListResponse = exports.onlineUserListRequest = exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
 class connectedUser {
-    constructor(id, username, dateJoined) {
+    constructor(id, username, dateJoined, password) {
         this.id = id;
         this.username = username;
-        this.dateJoined = this.dateJoined;
+        this.dateJoined = dateJoined;
+        this.password = password;
     }
 }
 exports.connectedUser = connectedUser;
@@ -93,4 +94,17 @@ exports.confirmMessage = confirmMessage;
 class deleteRequest {
 }
 exports.deleteRequest = deleteRequest;
+class onlineUserListRequest {
+}
+exports.onlineUserListRequest = onlineUserListRequest;
+class onlineUserListResponse {
+    constructor(data) {
+        this.type = 'onlineUserList';
+        this.data = data;
+    }
+}
+exports.onlineUserListResponse = onlineUserListResponse;
+class SearchUserRequest {
+}
+exports.SearchUserRequest = SearchUserRequest;
 //# sourceMappingURL=classes.js.map

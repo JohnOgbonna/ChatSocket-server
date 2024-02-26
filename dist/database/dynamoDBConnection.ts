@@ -7,7 +7,6 @@ const credentials = {
   accessKeyId: process.env.DB_ACCESS_KEY!,
   secretAccessKey: process.env.DB_SECRET_ACCESS_KEY!
 };
-console.log(credentials)
 // Set the AWS region
 const region = 'us-east-2';
 
@@ -28,5 +27,3 @@ export async function fetchDataFromDynamoDB() {
   }
 }
 
-
-// Call the function to fetch data from DynamoDB

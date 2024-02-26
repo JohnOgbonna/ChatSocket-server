@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendConversationMessages = exports.sendMessageList = exports.sendDirectMessage = exports.loadPersonalMessages = exports.createChat = exports.addMessageToChat = exports.saveChat = exports.findChats = exports.findChat = void 0;
+exports.sendOnlineUserList = exports.sendConversationMessages = exports.sendMessageList = exports.sendDirectMessage = exports.loadPersonalMessages = exports.createChat = exports.addMessageToChat = exports.saveChat = exports.findChats = exports.findChat = void 0;
 const uuid_1 = require("uuid");
 const classes_1 = require("./classes");
 const dynamoDBConnection_1 = require("../data/dynamoDBConnection");
@@ -18,14 +18,18 @@ function findChat(userId, speakingWithId) {
         try {
             const params = {
                 TableName: 'Chat_Socket-Messages',
-                FilterExpression: '#participants IN (:userId, :speakingWithId)',
-                ExpressionAttributeNames: { '#participants': 'participants' },
-                ExpressionAttributeValues: { ':userId': userId, ':speakingWithId': speakingWithId }
+                ProjectionExpression: 'id', // Return only the id attribute of matching items
+                FilterExpression: `contains(participants, :userId) AND contains(participants, :speakingWithId)`,
+                ExpressionAttributeValues: {
+                    ':userId': userId,
+                    ':speakingWithId': speakingWithId
+                }
             };
             const result = yield dynamoDBConnection_1.dynamodb.scan(params).promise();
+            console.log('result', result);
             if (result.Items && result.Items.length > 0) {
                 // Return the chatId of the first chat found
-                return result.Items[0].chatId;
+                return result.Items[0].id;
             }
             else {
                 return null; // Chat not found
@@ -50,7 +54,7 @@ function findChats(username) {
             const result = yield dynamoDBConnection_1.dynamodb.scan(params).promise();
             if (result.Items && result.Items.length > 0) {
                 // Return an array of chatIds
-                return result.Items.map(item => item.chatId);
+                return result.Items.map(item => item.id);
             }
             else {
                 return []; // No chats found
@@ -67,14 +71,7 @@ function saveChat(id, userId, speakingWithId, message, date) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const chatId = yield findChat(userId, speakingWithId);
-            const saveMessage = {
-                datetime: date,
-                id: id,
-                to: speakingWithId,
-                from: userId,
-                participants: [userId, speakingWithId],
-                message: message
-            };
+            const saveMessage = new classes_1.StoredMessage(date, id, speakingWithId, userId, [userId, speakingWithId], message);
             if (chatId) {
                 // Chat exists, update the chat with the new message
                 yield addMessageToChat(chatId, saveMessage);
@@ -197,13 +194,18 @@ function sendMessageList(request, ws) {
                 for (const chatId of chats) {
                     const params = {
                         TableName: 'Chat_Socket-Messages',
-                        Key: { id: chatId },
-                        ProjectionExpression: 'participants, messages[-1].message'
+                        KeyConditionExpression: 'id = :chatId',
+                        ExpressionAttributeValues: {
+                            ':chatId': chatId
+                        },
+                        Limit: 1,
+                        // Limit the result to only 1 item
                     };
-                    const result = yield dynamoDBConnection_1.dynamodb.get(params).promise();
-                    if (result.Item) {
-                        const participants = result.Item.participants;
-                        const lastMessage = (_b = (_a = result.Item.messages) === null || _a === void 0 ? void 0 : _a[0]) === null || _b === void 0 ? void 0 : _b.message;
+                    const result = yield dynamoDBConnection_1.dynamodb.query(params).promise();
+                    if (result.Items && result.Items.length > 0) {
+                        const participants = result.Items[0].participants;
+                        //send last conversation message
+                        const lastMessage = (_b = (_a = result.Items[0].messages) === null || _a === void 0 ? void 0 : _a.reverse()[0]) === null || _b === void 0 ? void 0 : _b.message;
                         const speakingWith = participants.find((participant) => participant !== request.username);
                         if (speakingWith && lastMessage) {
                             displayConvoArray.push(new classes_1.DisplayConvo(speakingWith, lastMessage, chatId));
@@ -223,27 +225,43 @@ exports.sendMessageList = sendMessageList;
 function sendConversationMessages(request, ws) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
-        try {
-            // Find conversation using the ID
-            const params = {
-                TableName: 'Chat_Socket-Messages',
-                Key: { id: request.convoId }
-            };
-            const result = yield dynamoDBConnection_1.dynamodb.get(params).promise();
-            if (result.Item) {
-                // Filter messages based on enabled
-                const conversationMessages = (_a = result.Item.messages) === null || _a === void 0 ? void 0 : _a.filter((message) => message.enabled.includes(request.username));
-                // Make a new SendChatHistory object
-                const chatHistory = new classes_1.SendChatHistory(conversationMessages, request.convoId);
-                // Send chat history
-                ws.send(JSON.stringify(chatHistory));
+        if (request.convoId) {
+            try {
+                // Find conversation using the ID
+                const params = {
+                    TableName: 'Chat_Socket-Messages',
+                    Key: { id: request.convoId }
+                };
+                const result = yield dynamoDBConnection_1.dynamodb.get(params).promise();
+                console.log(result);
+                if (result.Item) {
+                    // Filter messages based on enabled
+                    const conversationMessages = (_a = result.Item.messages) === null || _a === void 0 ? void 0 : _a.filter((message) => message.enabled.includes(request.username));
+                    // Make a new SendChatHistory object
+                    const chatHistory = new classes_1.SendChatHistory(conversationMessages, request.convoId);
+                    // Send chat history
+                    ws.send(JSON.stringify(chatHistory));
+                }
             }
-        }
-        catch (error) {
-            console.error('Error:', error);
-            throw error;
+            catch (error) {
+                console.error('Error:', error);
+                throw error;
+            }
         }
     });
 }
 exports.sendConversationMessages = sendConversationMessages;
+function sendOnlineUserList(ws, request, connectedUsers) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { username } = request;
+        //user list of online users who are not the user who sent the request
+        const onlineUserList = connectedUsers.filter(u => u.username !== username);
+        //sendOnlineUserList response
+        const sendOnlineUserList = new classes_1.onlineUserListResponse(onlineUserList);
+        if (ws && ws.readyState) {
+            ws.send(JSON.stringify(sendOnlineUserList));
+        }
+    });
+}
+exports.sendOnlineUserList = sendOnlineUserList;
 //# sourceMappingURL=messageFunctionsDB.js.map

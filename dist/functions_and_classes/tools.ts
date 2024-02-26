@@ -13,3 +13,10 @@ export function getCurrentDateTime(): string {
 
   return formattedDateTime;
 }
+
+export function timeValid(dateTime: string | Date): boolean {
+  const targetDateTime = typeof dateTime === 'string' ? new Date(dateTime) : dateTime;
+  const currentDateTime = new Date();
+
+  return targetDateTime > currentDateTime;
+}
