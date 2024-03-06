@@ -1,12 +1,11 @@
-import AWS, { IdentityStore } from 'aws-sdk';
-import { connectedUser } from "./classes";
-import { dynamodb } from '../database/dynamoDBConnection'; 
+import AWS from 'aws-sdk';
+import { connectedUser, searchUserRequest, searchUserResponse } from "./classes";
+import { dynamodb } from '../database/dynamoDBConnection';
 import { DynamoDB } from 'aws-sdk';
 import { timeValid } from './tools';
 
 
 // Initialize DynamoDB DocumentClient
-
 
 export async function loadUsers(): Promise<connectedUser[]> {
     const params: AWS.DynamoDB.DocumentClient.ScanInput = {
@@ -56,7 +55,6 @@ export async function findUser(username: string): Promise<connectedUser | undefi
 }
 
 export async function saveSession(id: string, username: string, sessionData: any) {
-
     try {
         const params: DynamoDB.DocumentClient.UpdateItemInput = {
             TableName: 'Chat_Socket-Users',
@@ -64,13 +62,14 @@ export async function saveSession(id: string, username: string, sessionData: any
                 id: id,
                 username: username
             },
-            UpdateExpression: 'SET #session = if_not_exists(#session, :sessionData)',
+            UpdateExpression: 'SET #sessionExpiration = :sessionDataExpiration',
             ExpressionAttributeNames: {
-                '#session': 'session'
+                '#sessionExpiration': 'sessionExpiration'
             },
             ExpressionAttributeValues: {
-                ':sessionData': sessionData
-            }
+                ':sessionDataExpiration': sessionData.sessionExpiration
+            },
+
         }
 
         await dynamodb.update(params).promise();
@@ -84,36 +83,69 @@ export async function saveSession(id: string, username: string, sessionData: any
 export async function validateSession(id: string, username: string) {
     try {
         const user = await findUser(username);
-
         if (!user) {
             console.error('User not found for username:', username);
-            throw new Error('User not found');
+            return false
         }
 
-        if (!user.session) {
+        if (!user.sessionExpiration) {
             console.error('No session associated with user:', username);
-            throw new Error('No session associated with user');
+            return false
         }
 
-        const { id: userId, username: name } = user.session.user;
-        const { expiration } = user.session.expiration
-
-        if (id === userId && username === name) {
-
-            if (timeValid(expiration)) return true;
-            else {
-                console.error('Session Expired on:', expiration);
-                throw new Error('Session Expired');
-            }
-        }
-
+        if (timeValid(user.sessionExpiration)) return true;
         else {
-            console.error('Session details do not match for user:', username);
-            return false;
-        }
+            console.error('Session Expired on:', user.sessionExpiration);
+            return false
 
+        }
+     
     } catch (error) {
         console.error('Error validating session:', error);
         throw error; // Rethrow the error for handling in the calling code
     }
 }
+
+
+export async function returnUserSearch(ws: WebSocket, searchUserRequest: searchUserRequest, connectedUsers: connectedUser[]) {
+    try {
+        const { username, searchkey } = searchUserRequest;
+
+        // Construct the DynamoDB query parameters
+        const params: AWS.DynamoDB.DocumentClient.ScanInput = {
+            TableName: 'Chat_Socket-Users',
+            ProjectionExpression: 'username, id',
+            FilterExpression: 'contains(username, :searchkey)',
+            ExpressionAttributeValues: {
+                ':searchkey': searchkey
+            }
+        };
+
+        // Perform the query
+        const data = await dynamodb.scan(params).promise();
+
+        // Extract the search results
+        let searchResults: connectedUser[] = data.Items ? data.Items as connectedUser[] : [];
+
+        // Add online status
+        searchResults.forEach(user => {
+            user.online = !!connectedUsers.find(u => u.username === user.username);
+        });
+
+        // Remove the current user from the search results
+        searchResults = searchResults.filter(user => user.username !== username);
+
+        // Send the search results back to the WebSocket client
+        const response: searchUserResponse = {
+            type: 'userSearchResults',
+            data: searchResults
+        };
+
+        ws.send(JSON.stringify(response));
+
+    } catch (error) {
+        console.error('Error processing user search:', error);
+        // Handle the error, e.g., send an error response back to the client
+    }
+}
+

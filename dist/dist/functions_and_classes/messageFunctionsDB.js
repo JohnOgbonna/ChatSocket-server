@@ -9,10 +9,11 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendOnlineUserList = exports.sendConversationMessages = exports.sendMessageList = exports.sendDirectMessage = exports.loadPersonalMessages = exports.createChat = exports.addMessageToChat = exports.saveChat = exports.findChats = exports.findChat = void 0;
+exports.typingIndicatorResponse = exports.deleteMessage = exports.startConvoResponse = exports.sendOnlineUserList = exports.sendConversationMessages = exports.sendMessageList = exports.sendDirectMessage = exports.loadPersonalMessages = exports.createChat = exports.addMessageToChat = exports.saveChat = exports.findChats = exports.findChat = void 0;
 const uuid_1 = require("uuid");
 const classes_1 = require("./classes");
-const dynamoDBConnection_1 = require("../data/dynamoDBConnection");
+const dynamoDBConnection_1 = require("../database/dynamoDBConnection");
+const userFunctionsDB_1 = require("./userFunctionsDB");
 function findChat(userId, speakingWithId) {
     return __awaiter(this, void 0, void 0, function* () {
         try {
@@ -26,7 +27,6 @@ function findChat(userId, speakingWithId) {
                 }
             };
             const result = yield dynamoDBConnection_1.dynamodb.scan(params).promise();
-            console.log('result', result);
             if (result.Items && result.Items.length > 0) {
                 // Return the chatId of the first chat found
                 return result.Items[0].id;
@@ -112,7 +112,7 @@ function createChat(chatId, userId, speakingWithId, message) {
             Item: {
                 id: chatId,
                 participants: [userId, speakingWithId],
-                messages: [message]
+                messages: message ? [message] : []
             }
         };
         yield dynamoDBConnection_1.dynamodb.put(params).promise();
@@ -148,44 +148,46 @@ function loadPersonalMessages(userId, speakingWithId) {
     });
 }
 exports.loadPersonalMessages = loadPersonalMessages;
-function sendDirectMessage(users, connectedUsers, parsedContent, ws, connectedRecipientWs) {
-    const recipient = users.find(user => user.username === parsedContent.recipient);
-    const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient);
-    if (connectedRecipient) {
-        // If connectedRecipient is online, send them the message
-        const sendMessage = new classes_1.SocketMessage(parsedContent.id, 'incoming', parsedContent.username, connectedRecipient.username, parsedContent.message, parsedContent.datetime);
-        if (connectedRecipientWs && connectedRecipientWs.length > 0) {
+function sendDirectMessage(connectedUsers, parsedContent, ws) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const recipient = yield (0, userFunctionsDB_1.findUser)(parsedContent.recipient);
+        const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient);
+        if (connectedRecipient) {
+            // If connectedRecipient is online, send them the message
+            const sendMessage = new classes_1.SocketMessage(parsedContent.id, 'incoming', parsedContent.username, connectedRecipient.username, parsedContent.message, parsedContent.datetime);
+            if (connectedRecipient.ws && connectedRecipient.ws.length > 0) {
+                try {
+                    connectedRecipient.ws.forEach(ws => ws.send(JSON.stringify(sendMessage)));
+                    console.log('message sent');
+                }
+                catch (err) {
+                    console.log('Recipient not connected');
+                }
+            }
+        }
+        if (recipient) {
+            // Save the chat to the database
             try {
-                connectedRecipientWs.forEach(ws => ws.send(JSON.stringify(sendMessage)));
-                console.log('message sent');
+                yield saveChat(parsedContent.id, parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
+                // Send confirmation message
+                const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, true);
+                ws.send(JSON.stringify(confirmationMessage));
             }
             catch (err) {
-                console.log('live message not sent');
+                console.log('error saving message');
+                // Send confirmation message with success as false
+                const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, false);
+                ws.send(JSON.stringify(confirmationMessage));
             }
         }
-    }
-    if (recipient) {
-        // Save the chat to the database
-        try {
-            saveChat(parsedContent.id, parsedContent.username, recipient.username, parsedContent.message, parsedContent.datetime);
-            // Send confirmation message
-            const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, true);
-            ws.send(JSON.stringify(confirmationMessage));
+        else {
+            ws.send(`No recipient named ${parsedContent.recipient} found`);
+            console.log(`Recipient ${parsedContent.recipient} not found.`);
         }
-        catch (err) {
-            console.log('error saving message');
-            // Send confirmation message with success as false
-            const confirmationMessage = new classes_1.confirmMessage(parsedContent.id, parsedContent.username, false);
-            ws.send(JSON.stringify(confirmationMessage));
-        }
-    }
-    else {
-        ws.send(`No recipient named ${parsedContent.recipient} found`);
-    }
+    });
 }
 exports.sendDirectMessage = sendDirectMessage;
 function sendMessageList(request, ws) {
-    var _a, _b;
     return __awaiter(this, void 0, void 0, function* () {
         try {
             const chats = yield findChats(request.username);
@@ -203,12 +205,21 @@ function sendMessageList(request, ws) {
                     };
                     const result = yield dynamoDBConnection_1.dynamodb.query(params).promise();
                     if (result.Items && result.Items.length > 0) {
-                        const participants = result.Items[0].participants;
-                        //send last conversation message
-                        const lastMessage = (_b = (_a = result.Items[0].messages) === null || _a === void 0 ? void 0 : _a.reverse()[0]) === null || _b === void 0 ? void 0 : _b.message;
+                        const { participants, messages } = result.Items[0];
+                        let lastMessage;
+                        let lastMessageTime;
+                        for (let i = messages.length - 1; i >= 0; i--) {
+                            //filter messages to avoid deleted ones
+                            let item = messages[i];
+                            if (item.enabled.includes(request.username)) {
+                                lastMessage = item.message;
+                                lastMessageTime = item.datetime.toString();
+                                break;
+                            }
+                        }
                         const speakingWith = participants.find((participant) => participant !== request.username);
                         if (speakingWith && lastMessage) {
-                            displayConvoArray.push(new classes_1.DisplayConvo(speakingWith, lastMessage, chatId));
+                            displayConvoArray.push(new classes_1.DisplayConvo(speakingWith, lastMessage, chatId, lastMessageTime));
                         }
                     }
                 }
@@ -233,8 +244,7 @@ function sendConversationMessages(request, ws) {
                     Key: { id: request.convoId }
                 };
                 const result = yield dynamoDBConnection_1.dynamodb.get(params).promise();
-                console.log(result);
-                if (result.Item) {
+                if (result.Item && result.Item.messages && result.Item.messages.length > 0) {
                     // Filter messages based on enabled
                     const conversationMessages = (_a = result.Item.messages) === null || _a === void 0 ? void 0 : _a.filter((message) => message.enabled.includes(request.username));
                     // Make a new SendChatHistory object
@@ -264,4 +274,120 @@ function sendOnlineUserList(ws, request, connectedUsers) {
     });
 }
 exports.sendOnlineUserList = sendOnlineUserList;
+function startConvoResponse(ws, request) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { username, chattingWith } = request;
+        const chatId = yield findChat(username, chattingWith);
+        if (chatId) {
+            const response = new classes_1.startConvoRes(chatId, chattingWith);
+            if (ws && ws.readyState) {
+                ws.send(JSON.stringify(response));
+            }
+        }
+        else {
+            //new chat id for participants
+            const newChatId = (0, uuid_1.v4)();
+            try {
+                yield createChat(newChatId, username, chattingWith, null);
+                //send response to the web socket user
+                const response = new classes_1.startConvoRes(newChatId, chattingWith);
+                ws.send(JSON.stringify(response));
+            }
+            catch (err) {
+                console.log('New chat not created', err);
+                return;
+            }
+        }
+    });
+}
+exports.startConvoResponse = startConvoResponse;
+function deleteMessage(ws, request, connectedUsers) {
+    return __awaiter(this, void 0, void 0, function* () {
+        //findchat using convo id and update 
+        try {
+            const { username, messageId, convoId } = request;
+            const params = {
+                TableName: 'Chat_Socket-Messages',
+                KeyConditionExpression: 'id = :chatId',
+                ProjectionExpression: 'messages',
+                ExpressionAttributeValues: {
+                    ':chatId': convoId,
+                }
+            };
+            // evaluate and modify the list
+            const result = yield dynamoDBConnection_1.dynamodb.query(params).promise();
+            // Check if messages were found for the convoId
+            if (result && result.Items && result.Items.length > 0) {
+                const messages = result.Items[0].messages;
+                //find the message index
+                const messageIndex = messages.findIndex(item => item.id === messageId);
+                //exit function if message index not found
+                if (messageIndex < 0) {
+                    console.log('message not found, delete unsuccessful');
+                    return;
+                }
+                //evaluate the actual message
+                const message = messages[messageIndex];
+                const userIndex = message.enabled.findIndex(user => user === username);
+                if (userIndex < 0) {
+                    console.log('Error in delete request');
+                    return;
+                }
+                //remove user from enabled list
+                message.enabled.splice(userIndex, 1);
+                //if user is not the one who sent the message and there are still users in the enabled array
+                if (message.enabled.length > 0 && message.from !== username) {
+                    messages[messageIndex] = message;
+                }
+                else {
+                    messages.splice(messageIndex, 1);
+                }
+                const params = {
+                    TableName: 'Chat_Socket-Messages',
+                    Key: { id: convoId },
+                    UpdateExpression: 'SET #messages = :messages',
+                    ExpressionAttributeNames: { '#messages': 'messages' },
+                    ExpressionAttributeValues: {
+                        ':messages': messages,
+                    }
+                };
+                yield dynamoDBConnection_1.dynamodb.update(params).promise();
+                console.log(`message deleted`, message.id);
+                //send delete confirmation to both users 
+                //find users
+                const connectedSender = connectedUsers.find(user => user.username === message.from);
+                const connectedRecipient = connectedUsers.find(user => user.username === message.to);
+                const deleteConfirmation = ({ type: 'deleteConfirmation', messageId: messageId });
+                if (connectedSender) {
+                    // if delete request sent by connected sender, send delete confirmation to both users
+                    if (connectedSender.username === username) {
+                        connectedSender.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)));
+                        //only send delete request if message hasnt beel deleted
+                        if (connectedRecipient && message.enabled.includes(connectedRecipient.username)) {
+                            connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)));
+                        }
+                    }
+                }
+                if (connectedRecipient && connectedRecipient.username === username) {
+                    //if connected recipient is the sender of delete request
+                    connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)));
+                }
+            }
+            else {
+                console.log('No messages found for the given convoId.');
+            }
+        }
+        catch (err) {
+            console.error('Error deleting message:', err);
+        }
+    });
+}
+exports.deleteMessage = deleteMessage;
+function typingIndicatorResponse(ws, request, connectedUsers) {
+    const { username, chattingWith } = request;
+    const connectedRecipient = connectedUsers.find(user => user.username === chattingWith);
+    if (connectedRecipient) {
+    }
+}
+exports.typingIndicatorResponse = typingIndicatorResponse;
 //# sourceMappingURL=messageFunctionsDB.js.map

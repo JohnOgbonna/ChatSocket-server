@@ -1,8 +1,11 @@
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDB } from 'aws-sdk';
-import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, messageHistoryReq, onlineUserListRequest, onlineUserListResponse } from './classes';
+import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, deleteRequest, messageHistoryReq, onlineUserListRequest, onlineUserListResponse, sendTypingIndicator, startConvoRequest, startConvoRes } from './classes';
 import { dynamodb } from '../database/dynamoDBConnection'
 import { findUser } from './userFunctionsDB';
+import { Start } from 'aws-sdk/clients/s3';
+import { connected } from 'process';
+import { Websocket } from 'aws-sdk/clients/connectparticipant';
 
 
 export async function findChat(userId: string, speakingWithId: string): Promise<string | null> {
@@ -18,7 +21,6 @@ export async function findChat(userId: string, speakingWithId: string): Promise<
         };
 
         const result = await dynamodb.scan(params).promise();
-        console.log('result', result)
         if (result.Items && result.Items.length > 0) {
             // Return the chatId of the first chat found
             return result.Items[0].id;
@@ -101,7 +103,7 @@ export async function createChat(chatId: string, userId: string, speakingWithId:
         Item: {
             id: chatId,
             participants: [userId, speakingWithId],
-            messages: [message]
+            messages: message ? [message] : []
         }
     };
 
@@ -135,7 +137,7 @@ export async function loadPersonalMessages(userId: string, speakingWithId: strin
     }
 }
 
-export async function sendDirectMessage(connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any, connectedRecipientWs: WebSocket[]) {
+export async function sendDirectMessage(connectedUsers: connectedUser[], parsedContent: SocketMessage, ws: any) {
 
     const recipient = await findUser(parsedContent.recipient as string)
     const connectedRecipient = connectedUsers.find(user => user.username === parsedContent.recipient);
@@ -151,9 +153,9 @@ export async function sendDirectMessage(connectedUsers: connectedUser[], parsedC
             parsedContent.datetime
         );
 
-        if (connectedRecipientWs && connectedRecipientWs.length > 0) {
+        if (connectedRecipient.ws && connectedRecipient.ws.length > 0) {
             try {
-                connectedRecipientWs.forEach(ws => ws.send(JSON.stringify(sendMessage)));
+                connectedRecipient.ws.forEach(ws => ws.send(JSON.stringify(sendMessage)));
                 console.log('message sent');
             } catch (err) {
                 console.log('Recipient not connected');
@@ -178,7 +180,7 @@ export async function sendDirectMessage(connectedUsers: connectedUser[], parsedC
     } else {
         ws.send(`No recipient named ${parsedContent.recipient} found`);
         console.log(`Recipient ${parsedContent.recipient} not found.`);
-        
+
     }
 }
 
@@ -200,12 +202,23 @@ export async function sendMessageList(request: ConvoListReq, ws: WebSocket): Pro
 
                 const result = await dynamodb.query(params).promise();
                 if (result.Items && result.Items.length > 0) {
-                    const participants = result.Items[0].participants;
-                    //send last conversation message
-                    const lastMessage = result.Items[0].messages?.reverse()[0]?.message;
+                    const { participants, messages } = result.Items[0]
+                    let lastMessage: string
+                    let lastMessageTime: string
+
+                    for (let i = messages.length - 1; i >= 0; i--) {
+                        //filter messages to avoid deleted ones
+                        let item: StoredMessage = messages[i]
+                        if (item.enabled.includes(request.username)) {
+                            lastMessage = item.message
+                            lastMessageTime = item.datetime.toString()
+                            break
+                        }
+                    }
+
                     const speakingWith = participants.find((participant: string) => participant !== request.username);
                     if (speakingWith && lastMessage) {
-                        displayConvoArray.push(new DisplayConvo(speakingWith, lastMessage, chatId));
+                        displayConvoArray.push(new DisplayConvo(speakingWith, lastMessage, chatId, lastMessageTime));
                     }
                 }
             }
@@ -228,9 +241,7 @@ export async function sendConversationMessages(request: messageHistoryReq, ws: a
             };
 
             const result = await dynamodb.get(params).promise();
-            console.log(result)
-
-            if (result.Item) {
+            if (result.Item && result.Item.messages && result.Item.messages.length > 0) {
                 // Filter messages based on enabled
                 const conversationMessages = result.Item.messages?.filter((message: StoredMessage) =>
                     message.enabled.includes(request.username)
@@ -262,3 +273,131 @@ export async function sendOnlineUserList(ws: WebSocket, request: onlineUserListR
     }
 }
 
+export async function startConvoResponse(ws: WebSocket, request: startConvoRequest) {
+
+    const { username, chattingWith } = request
+    const chatId = await findChat(username, chattingWith)
+
+    if (chatId) {
+        const response = new startConvoRes(chatId, chattingWith)
+        if (ws && ws.readyState) {
+            ws.send(JSON.stringify(response))
+        }
+    }
+    else {
+        //new chat id for participants
+        const newChatId = uuidv4()
+        try {
+            await createChat(newChatId, username, chattingWith, null)
+            //send response to the web socket user
+            const response = new startConvoRes(newChatId, chattingWith)
+            ws.send(JSON.stringify(response))
+        }
+        catch (err) {
+            console.log('New chat not created', err)
+            return
+        }
+    }
+}
+
+export async function deleteMessage(ws: WebSocket, request: deleteRequest, connectedUsers: connectedUser[]) {
+    //findchat using convo id and update 
+
+    try {
+        const { username, messageId, convoId } = request
+        const params: DynamoDB.DocumentClient.QueryInput = {
+            TableName: 'Chat_Socket-Messages',
+            KeyConditionExpression: 'id = :chatId',
+            ProjectionExpression: 'messages',
+            ExpressionAttributeValues: {
+                ':chatId': convoId,
+            }
+        };
+
+        // evaluate and modify the list
+        const result = await dynamodb.query(params).promise();
+
+        // Check if messages were found for the convoId
+        if (result && result.Items && result.Items.length > 0) {
+            const messages: StoredMessage[] = result.Items[0].messages
+            //find the message index
+            const messageIndex = messages.findIndex(item => item.id === messageId)
+            //exit function if message index not found
+            if (messageIndex < 0) {
+                console.log('message not found, delete unsuccessful')
+                return
+            }
+            //evaluate the actual message
+
+            const message = messages[messageIndex]
+            const userIndex = message.enabled.findIndex(user => user === username)
+            if (userIndex < 0) {
+                console.log('Error in delete request')
+                return
+            }
+
+            //remove user from enabled list
+            message.enabled.splice(userIndex, 1)
+
+            //if user is not the one who sent the message and there are still users in the enabled array
+            if (message.enabled.length > 0 && message.from !== username) {
+                messages[messageIndex] = message
+            }
+            else {
+                messages.splice(messageIndex, 1)
+            }
+
+            const params: DynamoDB.DocumentClient.UpdateItemInput = {
+                TableName: 'Chat_Socket-Messages',
+                Key: { id: convoId },
+                UpdateExpression: 'SET #messages = :messages',
+                ExpressionAttributeNames: { '#messages': 'messages' },
+                ExpressionAttributeValues: {
+                    ':messages': messages,
+                }
+            };
+            await dynamodb.update(params).promise();
+            console.log(`message deleted`, message.id)
+
+            //send delete confirmation to both users 
+
+            //find users
+            const connectedSender = connectedUsers.find(user => user.username === message.from)
+            const connectedRecipient = connectedUsers.find(user => user.username === message.to)
+            const deleteConfirmation = ({ type: 'deleteConfirmation', messageId: messageId })
+
+            if (connectedSender) {
+                // if delete request sent by connected sender, send delete confirmation to both users
+                if (connectedSender.username === username) {
+                    connectedSender.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+
+                    //only send delete request if message hasnt beel deleted
+                    if (connectedRecipient && message.enabled.includes(connectedRecipient.username)) {
+                        connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+                    }
+                }
+            }
+            if (connectedRecipient && connectedRecipient.username === username) {
+                //if connected recipient is the sender of delete request
+                connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+            }
+
+        }
+        else {
+            console.log('No messages found for the given convoId.');
+        }
+
+    } catch (err) {
+        console.error('Error deleting message:', err);
+    }
+}
+
+export function typingIndicatorResponse(ws: WebSocket, request: sendTypingIndicator, connectedUsers: connectedUser[]){
+
+    const {username, chattingWith} = request
+    const connectedRecipient = connectedUsers.find(user => user.username === chattingWith)
+    if(connectedRecipient){
+        
+    }
+    
+}

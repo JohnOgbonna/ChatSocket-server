@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.SearchUserRequest = exports.onlineUserListResponse = exports.onlineUserListRequest = exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
+exports.sendTypingIndicator = exports.startConvoRes = exports.searchUserRequest = exports.onlineUserListResponse = exports.onlineUserListRequest = exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
 class connectedUser {
     constructor(id, username, dateJoined, password) {
         this.id = id;
@@ -53,10 +53,11 @@ class SocketMessage {
 exports.SocketMessage = SocketMessage;
 //format of a conversation to be displayed
 class DisplayConvo {
-    constructor(speakingWith, lastMessage, convoId) {
+    constructor(speakingWith, lastMessage, convoId, lastMessageTime) {
         this.speakingWith = speakingWith,
             this.lastMessage = lastMessage,
             this.convoId = convoId;
+        this.lastMessageTime = lastMessageTime;
     }
 }
 exports.DisplayConvo = DisplayConvo;
@@ -104,7 +105,18 @@ class onlineUserListResponse {
     }
 }
 exports.onlineUserListResponse = onlineUserListResponse;
-class SearchUserRequest {
+class searchUserRequest {
 }
-exports.SearchUserRequest = SearchUserRequest;
+exports.searchUserRequest = searchUserRequest;
+class startConvoRes {
+    constructor(chatId, chattingWith) {
+        this.type = 'startConvoResponse',
+            this.chatId = chatId,
+            this.chattingWith = chattingWith;
+    }
+}
+exports.startConvoRes = startConvoRes;
+class sendTypingIndicator {
+}
+exports.sendTypingIndicator = sendTypingIndicator;
 //# sourceMappingURL=classes.js.map

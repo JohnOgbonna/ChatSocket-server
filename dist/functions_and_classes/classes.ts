@@ -5,6 +5,8 @@ export class connectedUser {
   dateJoined: Date | string;
   session: any
   password?: string
+  sessionExpiration?: string
+  online?: boolean
   constructor(id: string, username: string, dateJoined: Date | string, password: string) {
     this.id = id;
     this.username = username;
@@ -84,10 +86,12 @@ export class DisplayConvo {
   speakingWith: string;
   lastMessage: string;
   convoId: string;
-  constructor(speakingWith: string, lastMessage: string, convoId: string) {
+  lastMessageTime?: Date | string
+  constructor(speakingWith: string, lastMessage: string, convoId: string, lastMessageTime: Date | string) {
     this.speakingWith = speakingWith,
       this.lastMessage = lastMessage,
       this.convoId = convoId
+    this.lastMessageTime = lastMessageTime
   }
 }
 
@@ -155,8 +159,38 @@ export class onlineUserListResponse {
   }
 }
 
-export class SearchUserRequest {
+export class searchUserRequest {
   type: 'searchUserRequest';
   username: string;
   searchkey: string;
+}
+
+export type searchUserResponse = {
+  type: 'userSearchResults',
+  data: connectedUser[]
+};
+
+export type startConvoRequest = {
+  type: 'startConvoReq'
+  username: string
+  chattingWith: string
+}
+
+export class startConvoRes {
+  type: 'startConvoResponse'
+  chatId: string
+  chattingWith: string
+  constructor(chatId: string, chattingWith: string) {
+    this.type = 'startConvoResponse',
+      this.chatId = chatId,
+      this.chattingWith = chattingWith
+  }
+}
+
+export class sendTypingIndicator {
+  type: 'typingIndicator'
+  username: string
+  chattingWith: string
+  convoId: string
+  typing: boolean
 }

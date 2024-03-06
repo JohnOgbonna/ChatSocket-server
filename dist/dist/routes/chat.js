@@ -1,35 +1,46 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 const url = require('url');
-const express = require('express');
-const router = express.Router();
-const PORT = 3000;
-const userFunctions_1 = require("../functions_and_classes/userFunctions");
-const messageFunctions_1 = require("../functions_and_classes/messageFunctions");
+const userFunctionsDB_1 = require("../functions_and_classes/userFunctionsDB");
 const messageFunctionsDB_1 = require("../functions_and_classes/messageFunctionsDB");
+const tools_1 = require("../functions_and_classes/tools");
 const webSocketServer = (wss) => {
     let connectedUsers = [];
-    wss.on('connection', (ws, req) => {
+    wss.on('connection', (ws, req) => __awaiter(void 0, void 0, void 0, function* () {
         const username = url.parse(req.url, true).query.username;
         //check if user exists:
-        const foundUser = (0, userFunctions_1.findUser)(username);
+        const foundUser = yield (0, userFunctionsDB_1.findUser)(username);
         //if user doesnt exist, disconnect them right away
         if (!foundUser) {
-            ws.send('You must be registered to use this WebSocket.');
+            ws.send(JSON.stringify({ type: 'notRegistered', message: 'You must be registered to use this app.' }));
             ws.close(4000, 'User not found! Closing....');
             return;
         }
         //limit connected users to 25
         if (connectedUsers.length > 24) {
-            ws.send('Too many people online at this time');
+            ws.send(JSON.stringify({ type: 'chatFull', message: 'Chat Socket full, try again later.' }));
             ws.close(4000, 'ChatSocket is full');
+            return;
         }
-        foundUser.ws = [];
+        //initial validation of the session
+        if (!(yield (0, userFunctionsDB_1.validateSession)(foundUser.id, foundUser.username))) {
+            ws.send(JSON.stringify({ type: 'invalidSession', message: 'Invalid Session or Session Expired, Login Again' }));
+            ws.close(4000, 'Invalid session');
+        }
         //check if user is already connected
         const userConnectedIndex = connectedUsers.findIndex(user => user.id === (foundUser === null || foundUser === void 0 ? void 0 : foundUser.id));
         if (userConnectedIndex < 0) {
             //add found user to connected users if not exists
-            foundUser.ws.push(ws);
+            foundUser.ws = [ws];
             connectedUsers.push(foundUser);
         }
         //else add ws session to connected user
@@ -38,18 +49,19 @@ const webSocketServer = (wss) => {
         }
         console.log('connected users', connectedUsers.length);
         console.log('wss size', wss.clients.size);
-        ws.send(JSON.stringify("Welcome to Chat Socket!"));
+        ws.send(JSON.stringify({ type: 'socketReady', message: "Welcome to Chat Socket!" }));
         ws.on('message', (content) => {
             const parsedContent = JSON.parse(content);
             const type = parsedContent.type;
+            if (!(0, tools_1.timeValid)(foundUser.session.user.expiration)) {
+                ws.send(JSON.stringify({ type: 'invalidSession', message: 'Invalid Session or Session Expired' }));
+                ws.close(4000, 'Invalid session');
+            }
             switch (type) {
                 case 'direct':
                     {
-                        const users = (0, userFunctions_1.loadUsers)();
                         const message = parsedContent;
-                        const connectedRecipient = connectedUsers.find(person => person.username === message.recipient);
-                        const recipientWs = connectedRecipient ? connectedRecipient.ws : null;
-                        (0, messageFunctionsDB_1.sendDirectMessage)(users, connectedUsers, parsedContent, ws, recipientWs);
+                        (0, messageFunctionsDB_1.sendDirectMessage)(connectedUsers, message, ws);
                     }
                     break;
                 case 'convoListReq':
@@ -64,7 +76,7 @@ const webSocketServer = (wss) => {
                     break;
                 case 'deleteRequest':
                     {
-                        (0, messageFunctions_1.deleteMessage)(parsedContent, ws, connectedUsers);
+                        (0, messageFunctionsDB_1.deleteMessage)(ws, parsedContent, connectedUsers);
                     }
                     break;
                 case 'onlineUserListRequest':
@@ -72,7 +84,13 @@ const webSocketServer = (wss) => {
                         (0, messageFunctionsDB_1.sendOnlineUserList)(ws, parsedContent, connectedUsers);
                     }
                     break;
-                case 'searchUserRequest': {
+                case 'searchUserRequest':
+                    {
+                        (0, userFunctionsDB_1.returnUserSearch)(ws, parsedContent, connectedUsers);
+                    }
+                    break;
+                case 'startConvoReq': {
+                    (0, messageFunctionsDB_1.startConvoResponse)(ws, parsedContent);
                 }
             }
         });
@@ -92,7 +110,7 @@ const webSocketServer = (wss) => {
                 wss.clients.delete(ws);
             }
         });
-    });
+    }));
 };
 exports.default = webSocketServer;
 //# sourceMappingURL=chat.js.map

@@ -14,11 +14,11 @@ router.use(session({
     cookie: { maxAge: 5 * 60 * 60 * 1000 }
 }))
 
+
 router.post('/register-login', async (req, res) => {
     const { username, password, mode, } = req.body
     //find user with the same username 
     const sameUser = await findUser(username)
-    const { id } = sameUser as connectedUser
 
     if (mode.toLowerCase() === 'register') {
         if (sameUser) {
@@ -40,6 +40,7 @@ router.post('/register-login', async (req, res) => {
             await saveUser(newUser)
 
             console.log('User successfully registered');
+            
             return res.status(200).send(JSON.stringify("Successfully Registered"))
         }
         catch (err) {
@@ -65,9 +66,10 @@ router.post('/register-login', async (req, res) => {
             }))
         }
 
+        //create session
+        sameUser.sessionExpiration = req.session.cookie.expires.toString()
         req.session.user = sameUser;
-        req.session.expiration = req.session.cookie.expires.toString()
-        saveSession(id, username, req.session)
+        await saveSession(sameUser.id, username, req.session.user)
         console.log('User successfully logged in');
         return res.status(200).json("Successfully Logged In");
     }

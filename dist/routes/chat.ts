@@ -1,15 +1,10 @@
 const url = require('url')
-const express = require('express')
-const router = express.Router();
-import { v4 as uuidv4 } from 'uuid';
 import { Server } from 'ws';
-const PORT: number = 3000
-import { connectedUser, Message, SocketMessage, ConvoListReq, SendChatHistory } from '../functions_and_classes/classes'
-import { loadUsers, saveUsers} from '../functions_and_classes/userFunctions'
-import { saveChat, deleteMessage } from '../functions_and_classes/messageFunctions'
-import { findUser } from '../functions_and_classes/userFunctions';
-import { sendDirectMessage, sendMessageList, sendConversationMessages, sendOnlineUserList } from '../functions_and_classes/messageFunctionsDB';
-import { ConfigurationServicePlaceholders } from 'aws-sdk/lib/config_service_placeholders';
+import { connectedUser, SocketMessage } from '../functions_and_classes/classes'
+import { findUser, returnUserSearch, validateSession } from '../functions_and_classes/userFunctionsDB';
+import { sendDirectMessage, sendMessageList, sendConversationMessages, sendOnlineUserList, startConvoResponse, deleteMessage } from '../functions_and_classes/messageFunctionsDB';
+import { timeValid } from '../functions_and_classes/tools';
+
 
 
 const webSocketServer = (wss: Server) => {
@@ -19,7 +14,7 @@ const webSocketServer = (wss: Server) => {
   wss.on('connection', async (ws, req) => {
     const username: string = url.parse(req.url, true).query.username
     //check if user exists:
-    const foundUser: connectedUser = findUser(username)
+    const foundUser: connectedUser = await findUser(username)
 
     //if user doesnt exist, disconnect them right away
     if (!foundUser) {
@@ -33,13 +28,19 @@ const webSocketServer = (wss: Server) => {
       ws.close(4000, 'ChatSocket is full')
       return
     }
-    foundUser.ws = []
+
+    //initial validation of the session
+    if(!await validateSession(foundUser.id, foundUser.username)){
+      ws.send(JSON.stringify({ type: 'invalidSession', message:'Invalid Session or Session Expired, Login Again'}));
+      ws.close(4000, 'Invalid session')
+    }
+   
     //check if user is already connected
     const userConnectedIndex = connectedUsers.findIndex(user => user.id === foundUser?.id)
 
     if (userConnectedIndex < 0) {
       //add found user to connected users if not exists
-      foundUser.ws.push(ws as unknown as WebSocket)
+      foundUser.ws = [ws as unknown as WebSocket]
       connectedUsers.push(foundUser)
     }
     //else add ws session to connected user
@@ -50,19 +51,22 @@ const webSocketServer = (wss: Server) => {
     
     console.log('connected users', connectedUsers.length)
     console.log('wss size', wss.clients.size)
-    ws.send(JSON.stringify("Welcome to Chat Socket!"));
+    ws.send(JSON.stringify({type: 'socketReady', message: "Welcome to Chat Socket!"}));
 
-    ws.on('message', async (content: any) => {
+    ws.on('message', (content: any) => {
       const parsedContent = JSON.parse(content)
       const type = parsedContent.type
+      
+      if(!timeValid(foundUser.sessionExpiration)){
+        ws.send(JSON.stringify({ type: 'invalidSession', message:'Invalid Session or Session Expired'}));
+        ws.close(4000, 'Invalid session')
+      }
 
       switch (type) {
 
         case 'direct': {
           const message: SocketMessage = parsedContent
-          const connectedRecipient = await findUser(message.recipient as string)
-          const recipientWs = connectedRecipient ? connectedRecipient.ws : null
-          sendDirectMessage(connectedUsers, parsedContent, ws, recipientWs)
+          sendDirectMessage(connectedUsers, message, ws)
         }
           break;
 
@@ -77,16 +81,26 @@ const webSocketServer = (wss: Server) => {
           break;
 
         case 'deleteRequest': {
-          deleteMessage(parsedContent, ws as unknown as WebSocket, connectedUsers)
+          deleteMessage( ws as unknown as WebSocket, parsedContent, connectedUsers)
         }
           break
 
         case 'onlineUserListRequest': {
-          sendOnlineUserList(ws as unknown as WebSocket, parsedContent, connectedUsers,)
+          sendOnlineUserList(ws as unknown as WebSocket, parsedContent, connectedUsers)
         }
           break
 
         case 'searchUserRequest': {
+          returnUserSearch(ws as unknown as WebSocket, parsedContent, connectedUsers)
+        }
+        break
+
+        case 'startConvoReq': {
+          startConvoResponse(ws as unknown as WebSocket, parsedContent)
+        }
+        break
+
+        case'typingIndicator': {
 
         }
       }
@@ -105,6 +119,7 @@ const webSocketServer = (wss: Server) => {
         }
         else {
           connectedUsers.splice(connectedUserIndex, 1)
+
         }
         wss.clients.delete(ws)
       }

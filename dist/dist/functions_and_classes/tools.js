@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getCurrentDateTime = void 0;
+exports.timeValid = exports.getCurrentDateTime = void 0;
 function getCurrentDateTime() {
     const now = new Date();
     const year = now.getFullYear();
@@ -13,4 +13,10 @@ function getCurrentDateTime() {
     return formattedDateTime;
 }
 exports.getCurrentDateTime = getCurrentDateTime;
+function timeValid(dateTime) {
+    const targetDateTime = typeof dateTime === 'string' ? new Date(dateTime) : dateTime;
+    const currentDateTime = new Date();
+    return targetDateTime > currentDateTime;
+}
+exports.timeValid = timeValid;
 //# sourceMappingURL=tools.js.map

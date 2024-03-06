@@ -5,7 +5,6 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 const expressWs = require('express-ws');
 const express = require('express');
-const WebSocketChatRoute = require('./dist/routes/chat');
 const CheckUserRoute = require('./dist/routes/checkUser');
 const bodyParser = require('body-parser');
 const PORT = 3000;
