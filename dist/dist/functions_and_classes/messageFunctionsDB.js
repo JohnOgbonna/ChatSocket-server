@@ -244,14 +244,18 @@ function sendConversationMessages(request, ws) {
                     Key: { id: request.convoId }
                 };
                 const result = yield dynamoDBConnection_1.dynamodb.get(params).promise();
+                let chatHistory;
                 if (result.Item && result.Item.messages && result.Item.messages.length > 0) {
                     // Filter messages based on enabled
                     const conversationMessages = (_a = result.Item.messages) === null || _a === void 0 ? void 0 : _a.filter((message) => message.enabled.includes(request.username));
                     // Make a new SendChatHistory object
-                    const chatHistory = new classes_1.SendChatHistory(conversationMessages, request.convoId);
-                    // Send chat history
-                    ws.send(JSON.stringify(chatHistory));
+                    chatHistory = new classes_1.SendChatHistory(conversationMessages, request.convoId);
                 }
+                else {
+                    chatHistory = new classes_1.SendChatHistory([], request.convoId);
+                }
+                // Send chat history
+                ws.send(JSON.stringify(chatHistory));
             }
             catch (error) {
                 console.error('Error:', error);
@@ -266,6 +270,11 @@ function sendOnlineUserList(ws, request, connectedUsers) {
         const { username } = request;
         //user list of online users who are not the user who sent the request
         const onlineUserList = connectedUsers.filter(u => u.username !== username);
+        onlineUserList.forEach(u => {
+            delete (u.password);
+            delete (u.ws);
+            delete (u.sessionExpiration);
+        });
         //sendOnlineUserList response
         const sendOnlineUserList = new classes_1.onlineUserListResponse(onlineUserList);
         if (ws && ws.readyState) {
@@ -383,10 +392,14 @@ function deleteMessage(ws, request, connectedUsers) {
     });
 }
 exports.deleteMessage = deleteMessage;
-function typingIndicatorResponse(ws, request, connectedUsers) {
-    const { username, chattingWith } = request;
+function typingIndicatorResponse(request, connectedUsers) {
+    var _a;
+    const { chattingWith, convoId, typing } = request;
     const connectedRecipient = connectedUsers.find(user => user.username === chattingWith);
     if (connectedRecipient) {
+        const response = new classes_1.typingIndicatorRes(convoId, typing);
+        //send response indicator 
+        (_a = connectedRecipient.ws) === null || _a === void 0 ? void 0 : _a.forEach(ws => ws.send(JSON.stringify(response)));
     }
 }
 exports.typingIndicatorResponse = typingIndicatorResponse;

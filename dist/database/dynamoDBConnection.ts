@@ -16,7 +16,7 @@ export const dynamodb = new AWS.DynamoDB.DocumentClient({ credentials, region })
 // Example function to fetch data from DynamoDB table
 export async function fetchDataFromDynamoDB() {
   const params: AWS.DynamoDB.DocumentClient.ScanInput = {
-    TableName: 'Chat_Socket-Messages'
+    TableName: process.env.MESSAGES_TABLE
   };
 
   try {

@@ -87,7 +87,7 @@ export class DisplayConvo {
   lastMessage: string;
   convoId: string;
   lastMessageTime?: Date | string
-  constructor(speakingWith: string, lastMessage: string, convoId: string, lastMessageTime: Date | string) {
+  constructor(speakingWith: string, lastMessage: string, convoId: string, lastMessageTime?: Date | string) {
     this.speakingWith = speakingWith,
       this.lastMessage = lastMessage,
       this.convoId = convoId
@@ -193,4 +193,20 @@ export class sendTypingIndicator {
   chattingWith: string
   convoId: string
   typing: boolean
+}
+
+export class typingIndicatorRes {
+  type: 'typingIndicatorRes'
+  convoId: string
+  typing: boolean
+  constructor(convoId: string, typing: boolean){
+    this.type = 'typingIndicatorRes',
+    this.convoId = convoId,
+    this.typing = typing
+  }
+}
+
+export class sendLogoutRequest {
+  type: 'logoutRequest'
+  username: string
 }

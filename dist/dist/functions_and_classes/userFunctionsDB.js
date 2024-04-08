@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.returnUserSearch = exports.validateSession = exports.saveSession = exports.findUser = exports.saveUser = exports.loadUsers = void 0;
+exports.logout = exports.returnUserSearch = exports.validateSession = exports.saveSession = exports.findUser = exports.saveUser = exports.loadUsers = void 0;
 const dynamoDBConnection_1 = require("../database/dynamoDBConnection");
 const tools_1 = require("./tools");
 // Initialize DynamoDB DocumentClient
@@ -73,15 +73,14 @@ function saveSession(id, username, sessionData) {
                 TableName: 'Chat_Socket-Users',
                 Key: {
                     id: id,
-                    username: username
                 },
-                UpdateExpression: 'SET #session = :sessionData',
+                UpdateExpression: 'SET #sessionExpiration = :sessionDataExpiration',
                 ExpressionAttributeNames: {
-                    '#session': 'session'
+                    '#sessionExpiration': 'sessionExpiration'
                 },
                 ExpressionAttributeValues: {
-                    ':sessionData': sessionData
-                }
+                    ':sessionDataExpiration': sessionData.sessionExpiration
+                },
             };
             yield dynamoDBConnection_1.dynamodb.update(params).promise();
             console.log(`Session for user ${username} saved successfully.`);
@@ -101,21 +100,14 @@ function validateSession(id, username) {
                 console.error('User not found for username:', username);
                 return false;
             }
-            if (!user.session) {
+            if (!user.sessionExpiration) {
                 console.error('No session associated with user:', username);
                 return false;
             }
-            const { id: userId, username: name, expiration } = user.session.user;
-            if (id === userId && username === name) {
-                if ((0, tools_1.timeValid)(expiration))
-                    return true;
-                else {
-                    console.error('Session Expired on:', expiration);
-                    return false;
-                }
-            }
+            if ((0, tools_1.timeValid)(user.sessionExpiration))
+                return true;
             else {
-                console.error('Session details do not match for user:', username);
+                console.error('Session Expired on:', user.sessionExpiration);
                 return false;
             }
         }
@@ -163,4 +155,36 @@ function returnUserSearch(ws, searchUserRequest, connectedUsers) {
     });
 }
 exports.returnUserSearch = returnUserSearch;
+function logout(ws, request, connectedUsers) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { username } = request;
+        //find user in online list
+        const connectedUser = connectedUsers.find(u => u.username = username);
+        if (!connectedUser) {
+            console.log('No user to Logout');
+            return false;
+        }
+        else {
+            const { id } = connectedUser;
+            const date = new Date().toDateString();
+            const params = {
+                TableName: 'Chat_Socket-Users',
+                Key: {
+                    id: id,
+                    username: username
+                },
+                UpdateExpression: 'SET #sessionExpiration = :date',
+                ExpressionAttributeNames: {
+                    '#sessionExpiration': 'sessionExpiration'
+                },
+                ExpressionAttributeValues: {
+                    ':date': date
+                },
+            };
+            yield dynamoDBConnection_1.dynamodb.update(params).promise();
+            console.log(`user ${id} : ${username} logged out`);
+        }
+    });
+}
+exports.logout = logout;
 //# sourceMappingURL=userFunctionsDB.js.map

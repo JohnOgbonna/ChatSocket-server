@@ -16,6 +16,7 @@ const tools_1 = require("../functions_and_classes/tools");
 const webSocketServer = (wss) => {
     let connectedUsers = [];
     wss.on('connection', (ws, req) => __awaiter(void 0, void 0, void 0, function* () {
+        var _a;
         const username = url.parse(req.url, true).query.username;
         //check if user exists:
         const foundUser = yield (0, userFunctionsDB_1.findUser)(username);
@@ -45,7 +46,12 @@ const webSocketServer = (wss) => {
         }
         //else add ws session to connected user
         else {
-            connectedUsers[userConnectedIndex].ws.push(ws);
+            if (connectedUsers[userConnectedIndex].ws) {
+                (_a = connectedUsers[userConnectedIndex].ws) === null || _a === void 0 ? void 0 : _a.push(ws);
+            }
+            else {
+                connectedUsers[userConnectedIndex].ws = [ws];
+            }
         }
         console.log('connected users', connectedUsers.length);
         console.log('wss size', wss.clients.size);
@@ -53,7 +59,7 @@ const webSocketServer = (wss) => {
         ws.on('message', (content) => {
             const parsedContent = JSON.parse(content);
             const type = parsedContent.type;
-            if (!(0, tools_1.timeValid)(foundUser.session.user.expiration)) {
+            if (!(0, tools_1.timeValid)(foundUser.sessionExpiration)) {
                 ws.send(JSON.stringify({ type: 'invalidSession', message: 'Invalid Session or Session Expired' }));
                 ws.close(4000, 'Invalid session');
             }
@@ -89,14 +95,24 @@ const webSocketServer = (wss) => {
                         (0, userFunctionsDB_1.returnUserSearch)(ws, parsedContent, connectedUsers);
                     }
                     break;
-                case 'startConvoReq': {
-                    (0, messageFunctionsDB_1.startConvoResponse)(ws, parsedContent);
+                case 'startConvoReq':
+                    {
+                        (0, messageFunctionsDB_1.startConvoResponse)(ws, parsedContent);
+                    }
+                    break;
+                case 'typingIndicator':
+                    {
+                        (0, messageFunctionsDB_1.typingIndicatorResponse)(parsedContent, connectedUsers);
+                    }
+                    break;
+                case 'logoutRequest': {
+                    (0, userFunctionsDB_1.logout)(ws, parsedContent, connectedUsers);
                 }
             }
         });
         ws.on('close', () => {
             //remove disconnected user from online user array
-            const connectedUserIndex = connectedUsers.findIndex(user => user.ws.includes(ws));
+            const connectedUserIndex = connectedUsers.findIndex(user => { var _a; return (_a = user.ws) === null || _a === void 0 ? void 0 : _a.includes(ws); });
             if (connectedUserIndex > -1) {
                 let userWsArray = connectedUsers[connectedUserIndex].ws;
                 //remove websocket from the placeholder variable and put it back in the right place
@@ -108,6 +124,8 @@ const webSocketServer = (wss) => {
                     connectedUsers.splice(connectedUserIndex, 1);
                 }
                 wss.clients.delete(ws);
+                console.log('connected users:', ' ', connectedUsers.length);
+                console.log('wss size:', ' ', wss.clients.size);
             }
         });
     }));

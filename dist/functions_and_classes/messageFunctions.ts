@@ -131,7 +131,7 @@ export function sendMessageList(request: ConvoListReq, ws: any) {
             const lastMessage = messages[chatID].messages[messages[chatID].messages.length - 1].message
             const speakingWith = messages[chatID].participants.find((participant: string) => participant !== request.username)
             // push new display convo into array
-            displayConvoArray.push(new DisplayConvo(speakingWith, lastMessage, chatID))
+            displayConvoArray.push(new DisplayConvo(speakingWith as string, lastMessage, chatID))
         }
         );
     }
@@ -187,11 +187,15 @@ export function deleteMessage(request: deleteRequest, ws: WebSocket, connectedUs
     const connectedRecipient = connectedUsers.find(user => user.username === message.to)
     const deleteConfirmation = ({ type: 'deleteConfirmation', messageId: request.messageId })
 
-    connectedSender.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
-    //if sender of the message delete request is online and also the original sender of the message
-    if (connectedSender.username === request.username) {
-        //SEND to both recipient and sender, because message will be deleted for both if sender requests delete
-        connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+    if (connectedSender && connectedSender.ws) {
+        connectedSender.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+        //if sender of the message delete request is online and also the original sender of the message
+        if (connectedSender.username === request.username) {
+            //SEND to both recipient and sender, because message will be deleted for both if sender requests delete
+            if (connectedRecipient && connectedRecipient.ws) {
+                connectedRecipient.ws.forEach(socket => socket.send(JSON.stringify(deleteConfirmation)))
+            }
+        }
     }
 }
 

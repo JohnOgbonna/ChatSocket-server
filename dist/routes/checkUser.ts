@@ -1,7 +1,7 @@
-const express = require('express')
+import express from 'express';
 const router = express.Router();
-const uuid = require('uuid')
-const bcrypt = require('bcrypt');
+const uuid = require('uuid');
+import bcrypt from 'bcrypt';
 const session = require('express-session')
 import { connectedUser } from "../functions_and_classes/classes";
 import { findUser, saveSession, saveUser } from "../functions_and_classes/userFunctionsDB";
@@ -13,7 +13,6 @@ router.use(session({
     saveUninitialized: true,
     cookie: { maxAge: 5 * 60 * 60 * 1000 }
 }))
-
 
 router.post('/register-login', async (req, res) => {
     const { username, password, mode, } = req.body
@@ -40,11 +39,12 @@ router.post('/register-login', async (req, res) => {
             await saveUser(newUser)
 
             console.log('User successfully registered');
-            
+
             return res.status(200).send(JSON.stringify("Successfully Registered"))
         }
         catch (err) {
             console.log('Error saving user')
+            console.log(err)
             res.status(500).send((JSON.stringify("Problem saving user")))
         }
     }
@@ -56,8 +56,12 @@ router.post('/register-login', async (req, res) => {
                 message: 'User Not Found'
             }))
         }
+
+        let isMatch: undefined | boolean = undefined
         //compare password
-        const isMatch = await bcrypt.compare(password, sameUser.password)
+        if (password && sameUser.password) {
+            isMatch = await bcrypt.compare(password, sameUser.password)
+        }
 
         if (!isMatch) {
             return res.status(400).send(JSON.stringify({
@@ -67,11 +71,16 @@ router.post('/register-login', async (req, res) => {
         }
 
         //create session
-        sameUser.sessionExpiration = req.session.cookie.expires.toString()
-        req.session.user = sameUser;
-        await saveSession(sameUser.id, username, req.session.user)
-        console.log('User successfully logged in');
-        return res.status(200).json("Successfully Logged In");
+        if (sameUser && isMatch) {
+            sameUser.sessionExpiration = req.session.cookie.expires.toString()
+            req.session.user = sameUser;
+            await saveSession(sameUser.id, username, req.session.user)
+            console.log(`User ${sameUser.username}successfully logged in`);
+            return res.status(200).json("Successfully Logged In");
+        }
+        else{
+            return res.status(400).json("Not Authorized");
+        }
     }
 
     else if (mode.toLowerCase() !== 'login' && mode.toLowerCase() !== 'register') {

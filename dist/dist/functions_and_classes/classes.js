@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.sendTypingIndicator = exports.startConvoRes = exports.searchUserRequest = exports.onlineUserListResponse = exports.onlineUserListRequest = exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
+exports.sendLogoutRequest = exports.typingIndicatorRes = exports.sendTypingIndicator = exports.startConvoRes = exports.searchUserRequest = exports.onlineUserListResponse = exports.onlineUserListRequest = exports.deleteRequest = exports.confirmMessage = exports.SendChatHistory = exports.messageHistoryReq = exports.ConvoListReq = exports.DisplayConvo = exports.SocketMessage = exports.StoredChat = exports.StoredMessage = exports.Message = exports.connectedUser = void 0;
 class connectedUser {
     constructor(id, username, dateJoined, password) {
         this.id = id;
@@ -119,4 +119,15 @@ exports.startConvoRes = startConvoRes;
 class sendTypingIndicator {
 }
 exports.sendTypingIndicator = sendTypingIndicator;
+class typingIndicatorRes {
+    constructor(convoId, typing) {
+        this.type = 'typingIndicatorRes',
+            this.convoId = convoId,
+            this.typing = typing;
+    }
+}
+exports.typingIndicatorRes = typingIndicatorRes;
+class sendLogoutRequest {
+}
+exports.sendLogoutRequest = sendLogoutRequest;
 //# sourceMappingURL=classes.js.map

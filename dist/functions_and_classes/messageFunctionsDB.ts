@@ -1,11 +1,8 @@
 import { v4 as uuidv4 } from 'uuid';
 import { DynamoDB } from 'aws-sdk';
-import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, deleteRequest, messageHistoryReq, onlineUserListRequest, onlineUserListResponse, sendTypingIndicator, startConvoRequest, startConvoRes } from './classes';
+import { ConvoListReq, DisplayConvo, SendChatHistory, SocketMessage, StoredMessage, confirmMessage, connectedUser, deleteRequest, messageHistoryReq, onlineUserListRequest, onlineUserListResponse, sendTypingIndicator, startConvoRequest, startConvoRes, typingIndicatorRes } from './classes';
 import { dynamodb } from '../database/dynamoDBConnection'
 import { findUser } from './userFunctionsDB';
-import { Start } from 'aws-sdk/clients/s3';
-import { connected } from 'process';
-import { Websocket } from 'aws-sdk/clients/connectparticipant';
 
 
 export async function findChat(userId: string, speakingWithId: string): Promise<string | null> {
@@ -36,7 +33,7 @@ export async function findChat(userId: string, speakingWithId: string): Promise<
 export async function findChats(username: string): Promise<string[]> {
     try {
         const params: DynamoDB.DocumentClient.ScanInput = {
-            TableName: 'Chat_Socket-Messages',
+            TableName: process.env.MESSAGES_TABLE,
             FilterExpression: 'contains(#participants, :username)',
             ExpressionAttributeNames: { '#participants': 'participants' },
             ExpressionAttributeValues: { ':username': username }
@@ -84,7 +81,7 @@ export async function saveChat(id: string, userId: string, speakingWithId: strin
 
 export async function addMessageToChat(chatId: string, message: any): Promise<void> {
     const params: DynamoDB.DocumentClient.UpdateItemInput = {
-        TableName: 'Chat_Socket-Messages',
+        TableName: process.env.MESSAGES_TABLE,
         Key: { id: chatId },
         UpdateExpression: 'SET #messages = list_append(if_not_exists(#messages, :emptyList), :message)',
         ExpressionAttributeNames: { '#messages': 'messages' },
@@ -99,7 +96,7 @@ export async function addMessageToChat(chatId: string, message: any): Promise<vo
 
 export async function createChat(chatId: string, userId: string, speakingWithId: string, message: any): Promise<void> {
     const params: DynamoDB.DocumentClient.PutItemInput = {
-        TableName: 'Chat_Socket-Messages',
+        TableName: process.env.MESSAGES_TABLE,
         Item: {
             id: chatId,
             participants: [userId, speakingWithId],
@@ -116,7 +113,7 @@ export async function loadPersonalMessages(userId: string, speakingWithId: strin
 
         if (chatId) {
             const params: DynamoDB.DocumentClient.GetItemInput = {
-                TableName: 'Chat_Socket-Messages',
+                TableName: process.env.MESSAGES_TABLE,
                 Key: { id: chatId },
                 ProjectionExpression: 'messages'
             };
@@ -191,7 +188,7 @@ export async function sendMessageList(request: ConvoListReq, ws: WebSocket): Pro
         if (chats && chats.length > 0) {
             for (const chatId of chats) {
                 const params: DynamoDB.DocumentClient.QueryInput = {
-                    TableName: 'Chat_Socket-Messages',
+                    TableName: process.env.MESSAGES_TABLE,
                     KeyConditionExpression: 'id = :chatId',
                     ExpressionAttributeValues: {
                         ':chatId': chatId
@@ -236,11 +233,12 @@ export async function sendConversationMessages(request: messageHistoryReq, ws: a
         try {
             // Find conversation using the ID
             const params: DynamoDB.DocumentClient.GetItemInput = {
-                TableName: 'Chat_Socket-Messages',
+                TableName: process.env.MESSAGES_TABLE,
                 Key: { id: request.convoId }
             };
 
             const result = await dynamodb.get(params).promise();
+            let chatHistory: SendChatHistory
             if (result.Item && result.Item.messages && result.Item.messages.length > 0) {
                 // Filter messages based on enabled
                 const conversationMessages = result.Item.messages?.filter((message: StoredMessage) =>
@@ -248,11 +246,16 @@ export async function sendConversationMessages(request: messageHistoryReq, ws: a
                 );
 
                 // Make a new SendChatHistory object
-                const chatHistory = new SendChatHistory(conversationMessages, request.convoId as string);
+                chatHistory = new SendChatHistory(conversationMessages, request.convoId as string);
 
-                // Send chat history
-                ws.send(JSON.stringify(chatHistory));
             }
+            else {
+                chatHistory = new SendChatHistory([], request.convoId as string);
+            }
+
+            // Send chat history
+            ws.send(JSON.stringify(chatHistory));
+
         } catch (error) {
             console.error('Error:', error);
             throw error;
@@ -265,6 +268,11 @@ export async function sendOnlineUserList(ws: WebSocket, request: onlineUserListR
 
     //user list of online users who are not the user who sent the request
     const onlineUserList = connectedUsers.filter(u => u.username !== username)
+    onlineUserList.forEach(u => {
+        delete (u.password)
+        delete(u.ws)
+        delete(u.sessionExpiration)
+    })
 
     //sendOnlineUserList response
     const sendOnlineUserList = new onlineUserListResponse(onlineUserList)
@@ -306,7 +314,7 @@ export async function deleteMessage(ws: WebSocket, request: deleteRequest, conne
     try {
         const { username, messageId, convoId } = request
         const params: DynamoDB.DocumentClient.QueryInput = {
-            TableName: 'Chat_Socket-Messages',
+            TableName: process.env.MESSAGES_TABLE,
             KeyConditionExpression: 'id = :chatId',
             ProjectionExpression: 'messages',
             ExpressionAttributeValues: {
@@ -348,7 +356,7 @@ export async function deleteMessage(ws: WebSocket, request: deleteRequest, conne
             }
 
             const params: DynamoDB.DocumentClient.UpdateItemInput = {
-                TableName: 'Chat_Socket-Messages',
+                TableName: process.env.MESSAGES_TABLE,
                 Key: { id: convoId },
                 UpdateExpression: 'SET #messages = :messages',
                 ExpressionAttributeNames: { '#messages': 'messages' },
@@ -392,12 +400,14 @@ export async function deleteMessage(ws: WebSocket, request: deleteRequest, conne
     }
 }
 
-export function typingIndicatorResponse(ws: WebSocket, request: sendTypingIndicator, connectedUsers: connectedUser[]){
+export function typingIndicatorResponse(request: sendTypingIndicator, connectedUsers: connectedUser[]) {
 
-    const {username, chattingWith} = request
+    const { chattingWith, convoId, typing } = request
     const connectedRecipient = connectedUsers.find(user => user.username === chattingWith)
-    if(connectedRecipient){
-        
+    if (connectedRecipient) {
+        const response = new typingIndicatorRes(convoId, typing)
+        //send response indicator 
+        connectedRecipient.ws?.forEach(ws => ws.send(JSON.stringify(response)))
     }
-    
 }
+

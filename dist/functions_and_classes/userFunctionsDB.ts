@@ -1,5 +1,5 @@
 import AWS from 'aws-sdk';
-import { connectedUser, searchUserRequest, searchUserResponse } from "./classes";
+import { connectedUser, searchUserRequest, searchUserResponse, sendLogoutRequest } from "./classes";
 import { dynamodb } from '../database/dynamoDBConnection';
 import { DynamoDB } from 'aws-sdk';
 import { timeValid } from './tools';
@@ -9,7 +9,7 @@ import { timeValid } from './tools';
 
 export async function loadUsers(): Promise<connectedUser[]> {
     const params: AWS.DynamoDB.DocumentClient.ScanInput = {
-        TableName: 'Chat_Socket-Users'
+        TableName: process.env.USER_TABLE
     };
 
     try {
@@ -24,7 +24,7 @@ export async function loadUsers(): Promise<connectedUser[]> {
 export async function saveUser(user: connectedUser) {
     try {
         const params: AWS.DynamoDB.DocumentClient.PutItemInput = {
-            TableName: 'Chat_Socket-Users',
+            TableName: process.env.USER_TABLE,
             Item: user
         };
         await dynamodb.put(params).promise();
@@ -38,7 +38,7 @@ export async function saveUser(user: connectedUser) {
 
 export async function findUser(username: string): Promise<connectedUser | undefined> {
     const params: AWS.DynamoDB.DocumentClient.ScanInput = {
-        TableName: 'Chat_Socket-Users',
+        TableName: process.env.USER_TABLE,
         FilterExpression: 'username = :username',
         ExpressionAttributeValues: {
             ':username': username
@@ -57,7 +57,7 @@ export async function findUser(username: string): Promise<connectedUser | undefi
 export async function saveSession(id: string, username: string, sessionData: any) {
     try {
         const params: DynamoDB.DocumentClient.UpdateItemInput = {
-            TableName: 'Chat_Socket-Users',
+            TableName: process.env.USER_TABLE,
             Key: {
                 id: id,
                 username: username
@@ -99,7 +99,7 @@ export async function validateSession(id: string, username: string) {
             return false
 
         }
-     
+
     } catch (error) {
         console.error('Error validating session:', error);
         throw error; // Rethrow the error for handling in the calling code
@@ -113,7 +113,7 @@ export async function returnUserSearch(ws: WebSocket, searchUserRequest: searchU
 
         // Construct the DynamoDB query parameters
         const params: AWS.DynamoDB.DocumentClient.ScanInput = {
-            TableName: 'Chat_Socket-Users',
+            TableName: process.env.USER_TABLE,
             ProjectionExpression: 'username, id',
             FilterExpression: 'contains(username, :searchkey)',
             ExpressionAttributeValues: {
@@ -146,6 +146,36 @@ export async function returnUserSearch(ws: WebSocket, searchUserRequest: searchU
     } catch (error) {
         console.error('Error processing user search:', error);
         // Handle the error, e.g., send an error response back to the client
+    }
+}
+
+export async function logout(ws: WebSocket, request: sendLogoutRequest, connectedUsers: connectedUser[]) {
+    const { username } = request
+    //find user in online list
+    const connectedUser = connectedUsers.find(u => u.username = username)
+    if (!connectedUser) {
+        console.log('No user to Logout')
+        return false
+    }
+    else {
+        const { id } = connectedUser
+        const date = new Date().toDateString()
+        const params: DynamoDB.DocumentClient.UpdateItemInput = {
+            TableName: process.env.USER_TABLE,
+            Key: {
+                id: id,
+                username: username
+            },
+            UpdateExpression: 'SET #sessionExpiration = :date',
+            ExpressionAttributeNames: {
+                '#sessionExpiration': 'sessionExpiration'
+            },
+            ExpressionAttributeValues: {
+                ':date': date
+            },
+        }
+        await dynamodb.update(params).promise();
+        console.log(`user ${id} : ${username} logged out`)
     }
 }
 
