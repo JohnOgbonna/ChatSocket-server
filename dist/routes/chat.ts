@@ -33,6 +33,7 @@ const webSocketServer = (wss: Server) => {
     if (!await validateSession(foundUser.id, foundUser.username)) {
       ws.send(JSON.stringify({ type: 'invalidSession', message: 'Invalid Session or Session Expired, Login Again' }));
       ws.close(4000, 'Invalid session')
+      return
     }
 
     //check if user is already connected
