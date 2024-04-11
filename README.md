@@ -1,6 +1,6 @@
 This is the server application for my app, Chat Socket. It allows users to sign up and message each other with plans for group chat support coming soon
 
-This node app, when connected to the client allows for sending and recieving This node app, when connected to the client allows for sending and receiving text messages  between two users
+This node app, when connected to the client allows for sending and receiving text messages  between two users
 
 This app also authenticates using express session, and allows for users to sign up and use the service 
 
